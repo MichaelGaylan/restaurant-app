@@ -12,6 +12,7 @@ Project code: `RSW`. One shared restaurant app (from Bootleggers Kitchen) and a 
 - [ ] RSW-020 · Each restaurant's own starter menu and stock list (content file per restaurant; the shared app now starts with an empty menu and only non-food supplies) · Data · M · added 2026-11-22
 - [ ] RSW-021 · Shared data (Firebase) per restaurant: one Firebase project for all restaurants, each under `teams/<id>` (rules in `app/firestore.rules` already allow that), and the wizard fills in the config · Infra · M · added 2026-11-22
 - [ ] RSW-022 · Report a problem per restaurant: Web3Forms key field in the wizard · Infra · S · added 2026-11-22
+- [ ] RSW-027 · Until RSW-023: copy each Bootleggers release into `app/` (same batch as the Bootleggers release) · Infra · S · added 2026-11-22
 - [ ] RSW-023 · Move Bootleggers onto the shared app as `r/bootleggers/`, keeping its data names (`blg.`, `bootleggers`), as a planned switch (staff re-add the app to their home screen) · Infra · L · added 2026-11-22
 - [ ] RSW-024 · Merge the Payroll module into the shared app (after BPAY merge checklist) · Infra · L · added 2026-11-22
 - [ ] RSW-025 · Wizard "Publish" button that uploads the restaurant folder to GitHub directly, instead of download + upload · Infra · M · added 2026-11-22
@@ -19,6 +20,8 @@ Project code: `RSW`. One shared restaurant app (from Bootleggers Kitchen) and a 
 ## 🟡 Hold
 
 ## 🟣 Done
+### Shared app 0.7.1 · build 2026.11.22-2
+- [x] RSW-026 · Shared app caught up with Bootleggers 0.7.1: Payroll, Point of sale, event reminders, one-section-at-a-time lists (RRA-094..105). Keeps the shared-app differences (per-restaurant keys, no Bootleggers menu) · Infra · M · added 2026-11-22
 ### Wizard 0.1.0 · shared app 0.6.0 · build 2026.11.22-1
 - [x] RSW-001 · Brand settings file in Bootleggers (BPAY-017, Bootleggers PR #19) · Infra · M
 - [x] RSW-002 · Shared app in `app/`: one copy of the code; each restaurant is a small folder `r/<id>/` (name, icons, brand.js, sw.js, notices). Admin keys, Firebase and Report key are per restaurant; Bootleggers' menu and food stock list taken out · Infra · L

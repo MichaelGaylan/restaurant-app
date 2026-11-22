@@ -48,6 +48,25 @@ export const wideMQ = matchMedia('(min-width: 768px)');
 export const isWide = () => wideMQ.matches;
 
 // Colored chips (RRA-051), the same on phones and wide screens.
+// RRA-094: sections that open one at a time, on phones, iPads and computers.
+// A head is a .acc-head button (its body is the next element) or a table band
+// row tr.acc-band (its rows are the next <tbody>). Every section starts
+// collapsed unless `open` names it; `onChange` gets the open key, or null.
+export function oneOpen(root, onChange = () => {}) {
+  const heads = $$('.acc-head, .acc-band', root);
+  const bodyOf = (h) => (h.matches('tr') ? h.closest('tbody').nextElementSibling : h.nextElementSibling);
+  heads.forEach((h) => {
+    h.setAttribute('aria-expanded', h.classList.contains('open') ? 'true' : 'false');
+    h.onclick = (e) => {
+      if (e.target.closest('a, input, select, textarea, button') && e.target.closest('a, input, select, textarea, button') !== h) return;
+      const opening = !h.classList.contains('open');
+      heads.forEach((x) => { x.classList.remove('open'); x.setAttribute('aria-expanded', 'false'); const b = bodyOf(x); if (b) b.hidden = true; });
+      if (opening) { h.classList.add('open'); h.setAttribute('aria-expanded', 'true'); const b = bodyOf(h); if (b) b.hidden = false; }
+      onChange(opening ? h.dataset.g : null);
+    };
+  });
+}
+
 export const chip = (text, color) => `<span class="chip c-${color}">${esc(text)}</span>`;
 
 // Search box with an X that clears it (RRA-050).

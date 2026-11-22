@@ -2,7 +2,7 @@
 // starts unticked, and cooks tick items off as they finish them.
 
 import * as data from './data.js';
-import { $, $$, esc, view, LS, sheet, toast, setTitle, setChrome, session } from './ui.js';
+import { $, $$, esc, view, LS, sheet, toast, setTitle, setChrome, session, oneOpen, chip } from './ui.js';
 import { canChange } from './perms.js';
 
 let editing = false;
@@ -47,15 +47,15 @@ async function render() {
   const savedOpen = LS.get('prepSavedOpen', false) || !items.length;
   view.innerHTML = `
     <p class="muted small">${new Date().toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}${total ? ` · ${finished} of ${total} done` : ''}</p>
-    ${order.filter((s) => byStation[s]).map((s) => `
-      <div class="section-label">${esc(s)}</div>
-      <div class="group">${byStation[s].map((i) => {
+    ${order.filter((s) => byStation[s]).map((s) => { const n = byStation[s].length, dn = byStation[s].filter((i) => done.done[i.id]).length, o = LS.get('prepOpen', null) === s; return `
+      <button class="acc-head${o ? ' open' : ''}" type="button" data-g="${esc(s)}"><span class="grow">${esc(s)}</span><span class="meta">${dn === n ? chip('All done', 'green') : `${dn} of ${n} done`}</span></button>
+      <div class="group acc-body"${o ? '' : ' hidden'}>${byStation[s].map((i) => {
         const d = done.done[i.id];
         return `<div class="row ${d && !editing ? 'done' : ''}" data-id="${i.id}">
           ${editing ? `<button class="rm" type="button" data-rm="${i.id}" aria-label="Remove">−</button>` : '<span class="chk"></span>'}
           <span class="grow"><span class="title">${esc(i.name)}</span>${d && !editing ? `<span class="sub">${esc(d.by)} · ${new Date(d.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>` : ''}</span>
           <span class="meta">${esc(i.amount || '')}</span>${editing ? '<span class="chev">›</span>' : ''}</div>`;
-      }).join('')}</div>`).join('') || `<div class="empty">${done.clearedAt ? `All prep done${done.clearedBy ? ` (finished by ${esc(done.clearedBy)})` : ''}. The list is ready for the next shift.` : 'No prep items yet.'}${change ? `<br>${saved.length ? 'Tap items in <b>Saved items</b> below to fill it, or tap <b>Edit</b> to add new ones.' : 'Tap <b>Edit</b> to add what gets prepped.'}` : ''}</div>`}
+      }).join('')}</div>`; }).join('') || `<div class="empty">${done.clearedAt ? `All prep done${done.clearedBy ? ` (finished by ${esc(done.clearedBy)})` : ''}. The list is ready for the next shift.` : 'No prep items yet.'}${change ? `<br>${saved.length ? 'Tap items in <b>Saved items</b> below to fill it, or tap <b>Edit</b> to add new ones.' : 'Tap <b>Edit</b> to add what gets prepped.'}` : ''}</div>`}
     ${editing ? '<button class="btn tonal block" id="add" type="button">+ Add prep item</button><p class="muted small">Tap an item to change it. Stations are set in Settings → Prep stations.</p>' : total ? `<p class="muted small center">Tap an item when it's done. The list starts fresh each day.${change ? ' To change an item, tap Edit, then tap the item.' : ''}</p>` : ''}
     ${change && saved.length ? `<details class="saved" id="saved"${savedOpen ? ' open' : ''}>
       <summary><span class="grow">Saved items</span><span class="meta">${saved.length}</span></summary>
@@ -65,6 +65,7 @@ async function render() {
         <span class="grow"><span class="title">${esc(x.name)}</span><span class="sub">${esc([x.amount, x.station].filter(Boolean).join(' · '))}</span></span>
         <span class="meta">${onList.has(savedKey(x.name)) ? 'On the list' : '<span class="plus">+ Add</span>'}</span></div>`).join('')}</div>
     </details>` : ''}`;
+  oneOpen(view, (g) => LS.set('prepOpen', g));
   $('#edit')?.addEventListener('click', () => { editing = !editing; render(); });
   $('#add')?.addEventListener('click', () => itemDialog(stations));
   $('#saved')?.addEventListener('toggle', (e) => LS.set('prepSavedOpen', e.target.open));
@@ -125,6 +126,7 @@ async function itemDialog(stations, existing) {
   });
   if (!it) return;
   await data.put('prepitem', it);
+  LS.set('prepOpen', it.station); // RRA-094: show the station it went into
   await remember(it);
   toast(existing ? 'Saved' : 'Added');
   render();

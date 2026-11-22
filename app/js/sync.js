@@ -18,7 +18,9 @@ import { level, myStaff } from './perms.js';
 import { isPrivate, recipientKeys } from './audience.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
-const COLLS = ['recipe', 'stock', 'vendor', 'staff', 'prepitem', 'prepday', 'post', 'week', 'swap', 'event', 'waste', 'punch', 'payrate', 'prepsaved', 'settings'];
+const COLLS = ['recipe', 'stock', 'vendor', 'staff', 'prepitem', 'prepday', 'post', 'week', 'swap', 'event', 'waste', 'punch', 'payrate', 'prepsaved', 'settings',
+  'payrun', 'paystub', 'advance', 'tipshare', 'possales', 'tippool', 'payperiod', // payroll (RRA-095)
+  'check', 'ticket']; // point of sale (RRA-101)
 const te = new TextEncoder();
 const td = new TextDecoder();
 
@@ -97,13 +99,28 @@ async function open(rec) {
 // Hours and pay rates (RRA-055) are sealed to the pay key, not the team key:
 // only managers and the Admin can open them. A punch is also sealed to the
 // employee's own phone so a manager's fix reaches them.
-const PRIVATE = ['punch', 'payrate'];
+// Payroll (RRA-095): pay runs, paystubs, early pay, tip shares and POS sales
+// are sealed the same way. Anything with a staffId (a punch, a rate, a
+// paystub, an early pay request, a tip share) is also sealed to that person's
+// phone, so they see their own. Kitchen punches are also sealed to chefs the
+// Admin lets approve kitchen hours (box c).
+const PRIVATE = ['punch', 'payrate', 'payrun', 'paystub', 'advance', 'tipshare', 'possales'];
+const OWN_PAY = ['punch', 'payrate', 'paystub', 'advance', 'tipshare'];
 async function sealPrivate(coll, doc) {
-  const pub = (await data.settings()).payPub;
+  const set = await data.settings();
+  const pub = set.payPub;
   if (!pub) return null; // waits until the Admin phone has made the pay key
   const bytes = te.encode(JSON.stringify(doc));
   const box = { m: await sealTo(pub, bytes) };
-  if (coll === 'punch') { const st = await data.get('staff', doc.staffId); if (st?.ek) box.s = await sealTo(st.ek, bytes); }
+  if (OWN_PAY.includes(coll) && doc.staffId) {
+    const st = await data.get('staff', doc.staffId);
+    if (st?.ek) box.s = await sealTo(st.ek, bytes);
+    const chefs = Object.entries(set.payroll?.chefHours || {}).filter(([, on]) => on).map(([id]) => id);
+    if (coll === 'punch' && chefs.length && st && (st.dept || (/bar|server|host|bus|wait|front|cashier|manager|gm/i.test(st.position || '') ? 'x' : 'Kitchen')) === 'Kitchen' && (st.role || 'staff') === 'staff') {
+      box.c = {};
+      for (const id of chefs) { const ch = await data.get('staff', id); if (ch?.ek) { try { box.c[ch.ek] = await sealTo(ch.ek, bytes); } catch { /* old key */ } } }
+    }
+  }
   return { iv: 'pk1', ct: JSON.stringify(box) };
 }
 async function openPrivate(r) {
@@ -114,12 +131,19 @@ async function openPrivate(r) {
     try {
       const doc = JSON.parse(td.decode(await openFrom(priv, box.m)));
       // A manager the Admin set to No for this keeps none of it on the phone.
-      if (r.c === 'payrate' && level('payrates') === 'none') return null;
-      if (r.c === 'punch' && level('timesheets') === 'none' && doc.staffId !== myStaff()?.id) return null;
+      const own = doc.staffId && doc.staffId === myStaff()?.id;
+      if (['payrate', 'paystub', 'payrun', 'possales', 'tipshare'].includes(r.c) && level('payrates') === 'none' && !own) return null;
+      if (r.c === 'punch' && level('timesheets') === 'none' && !own) return null;
+      if (r.c === 'advance' && level('advances') === 'none' && level('payrates') === 'none' && !own) return null;
       return doc;
     } catch { /* not ours */ }
   }
   if (box.s) { try { return JSON.parse(td.decode(await openFrom((await store.ecdhKey()).privateKey, box.s))); } catch { /* not ours */ } }
+  if (box.c) {
+    // A chef approving kitchen hours (RRA-095)
+    const ek = await exportMyEk();
+    if (ek && box.c[ek]) { try { return JSON.parse(td.decode(await openFrom((await store.ecdhKey()).privateKey, box.c[ek]))); } catch { /* not ours */ } }
+  }
   return null;
 }
 

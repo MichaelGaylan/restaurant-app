@@ -1,13 +1,14 @@
 // Settings (RRA-029) and roles and permissions (RRA-002).
 
 import * as data from './data.js';
-import { $, $$, esc, view, sheet, toast, setTitle, setChrome, session, THEMES, getTheme, setTheme } from './ui.js';
+import { $, $$, esc, view, sheet, toast, setTitle, setChrome, session, THEMES, getTheme, setTheme, oneOpen, LS } from './ui.js';
 import { AREAS, PAY_AREAS, ROLE_DEFAULTS, level, canChange, canSee, isHost } from './perms.js';
 import { PAY_PRESETS, payRules, rulesText } from './lounge.js';
 import { ROLES, can as canAccess, canChangeRole, makeRoleChange, rotatePayKey } from './access.js';
 import { staffList } from './schedule.js';
 import { INACTIVITY_DAYS } from './config.js';
 import * as sync from './sync.js';
+import { REMIND_DAYS, remindLabel, remindOf } from './events.js';
 
 export async function settingsView() {
   setChrome({ tab: 'more', back: true });
@@ -25,29 +26,35 @@ export async function settingsView() {
   const { inReportTeam, openReports } = await import('./reports.js');
   const nReports = inReportTeam() ? await openReports() : 0;
   const rules = payRules(s);
-  view.innerHTML = `
-    <div class="section-label">Appearance · this device</div>
-    <div class="segmented" id="theme" role="radiogroup" aria-label="Appearance">${Object.entries(THEMES).map(([k, v]) => `<button type="button" role="radio" aria-checked="${k === theme}" data-theme-opt="${k}" class="${k === theme ? 'on' : ''}">${v}</button>`).join('')}</div>
-    <p class="muted small">Match device follows your phone's or iPad's own light and dark setting. The moon button at the top switches between light and dark in one tap. This choice is saved on this device only.</p>
-    ${seePay ? `<div class="section-label">Pay</div>
-    <div class="group"><button class="row nav" id="payrules" type="button"><span class="grow"><span class="title">Pay rules</span><span class="sub">${esc(PAY_PRESETS[rules.preset]?.name || 'Custom')}: ${esc(rulesText(rules))}</span></span></button></div>` : ''}
-    ${full ? `<div class="section-label">People</div>
-    <div class="group">
+  // RRA-094: each group opens on its own, one at a time.
+  const so = LS.get('setOpen', null);
+  view.innerHTML = `<div class="set-acc">
+    <button class="acc-head${so === 'look' ? ' open' : ''}" type="button" data-g="look"><span class="grow">Appearance · this device</span><span class="meta">${esc(THEMES[theme])}</span></button>
+    <div class="group acc-body pad-top"${so === 'look' ? '' : ' hidden'}><div class="segmented" id="theme" role="radiogroup" aria-label="Appearance">${Object.entries(THEMES).map(([k, v]) => `<button type="button" role="radio" aria-checked="${k === theme}" data-theme-opt="${k}" class="${k === theme ? 'on' : ''}">${v}</button>`).join('')}</div>
+    <p class="muted small">Match device follows your phone's or iPad's own light and dark setting. The moon button at the top switches between light and dark in one tap. This choice is saved on this device only.</p></div>
+    ${seePay ? `<button class="acc-head${so === 'pay' ? ' open' : ''}" type="button" data-g="pay"><span class="grow">Pay</span></button>
+    <div class="group acc-body"${so === 'pay' ? '' : ' hidden'}><button class="row nav" id="payrules" type="button"><span class="grow"><span class="title">Pay rules</span><span class="sub">${esc(PAY_PRESETS[rules.preset]?.name || 'Custom')}: ${esc(rulesText(rules))}</span></span></button>
+      <a class="row nav" href="#/payroll"><span class="grow"><span class="title">Payroll</span><span class="sub">Review hours, review pay, submit</span></span></a>
+      ${isHost() ? '<a class="row nav" href="#/paysettings"><span class="grow"><span class="title">Payroll settings</span><span class="sub">Pay period, tip rules, chef approval, payroll service, POS</span></span></a>' : ''}</div>` : ''}
+    ${full ? `<button class="acc-head${so === 'people' ? ' open' : ''}" type="button" data-g="people"><span class="grow">People</span><span class="meta">${counts.staff} staff</span></button>
+    <div class="group acc-body"${so === 'people' ? '' : ' hidden'}>
       <a class="row" href="#/staff"><span class="grow">Staff</span><span class="meta">${counts.staff}</span></a>
       <a class="row" href="#/roles"><span class="grow">Roles and permissions</span></a>
       ${canChange('schedule') ? '<a class="row" href="#/shifts"><span class="grow">Shift times</span><span class="meta">Schedule buttons</span></a>' : ''}
       ${canAccess(session.profile, 'invite') ? '<a class="row" href="#/team"><span class="grow">Invite and approve phones</span></a>' : ''}
     </div>
-    <div class="section-label">Kitchen</div>
-    <div class="group">
+    <button class="acc-head${so === 'kitchen' ? ' open' : ''}" type="button" data-g="kitchen"><span class="grow">Kitchen</span><span class="meta">Vendors, stock, stations, menu</span></button>
+    <div class="group acc-body"${so === 'kitchen' ? '' : ' hidden'}>
       <a class="row" href="#/vendors"><span class="grow">Vendors</span><span class="meta">${counts.vendors}</span></a>
       <a class="row" href="#/stock-items"><span class="grow">Stock items</span><span class="meta">${counts.stock}</span></a>
       <a class="row" href="#/list/stations"><span class="grow">Prep stations</span><span class="meta">${esc((s.stations || []).slice(0, 3).join(', '))}</span></a>
       <a class="row" href="#/list/sections"><span class="grow">Menu sections</span><span class="meta">${(s.sections || []).length}</span></a>
     </div>
-    <div class="section-label">App</div>
-    <div class="group">
+    <button class="acc-head${so === 'app' ? ' open' : ''}" type="button" data-g="app"><span class="grow">App</span>${nReports ? `<span class="chip warn">${nReports} open</span>` : ''}</button>
+    <div class="group acc-body"${so === 'app' ? '' : ' hidden'}>
+      ${isHost() ? '<a class="row nav" href="#/posset"><span class="grow"><span class="title">Point of sale</span><span class="sub">Card payments service, card reader, sales tax</span></span></a>' : ''}
       <div class="row"><span class="grow">Popups for new notices</span><button class="toggle ${s.popups !== false ? 'on' : ''}" id="popups" type="button" ${edit ? '' : 'disabled'} aria-label="Popups for new notices"></button></div>
+      ${canSee('events') ? `<div class="row"><span class="grow">Event reminders</span><span class="meta">${esc(remindLabel(remindOf({}, s)))}</span>${edit ? '<button class="btn plain small" id="ev-remind" type="button">Change</button>' : ''}</div>` : ''}
       <div class="row"><span class="grow">Food cost target</span><span class="meta">${s.foodCostTarget || 30}%</span>${edit ? '<button class="btn plain small" id="target" type="button">Change</button>' : ''}</div>
       <div class="row"><span class="grow">Shared team data</span><span class="meta">${esc(syncLabel())}</span></div>
       ${edit ? '<a class="row" href="#/dedupe"><span class="grow">Clean up duplicates</span></a>' : ''}
@@ -56,7 +63,8 @@ export async function settingsView() {
       <a class="row" href="#/report"><span class="grow">Report a problem</span></a>
       ${inReportTeam() ? `<a class="row" href="#/reports"><span class="grow">Problem reports</span>${nReports ? `<span class="chip warn">${nReports} open</span>` : ''}</a>` : ''}
     </div>
-    <p class="muted small center">${edit ? 'You can change Settings.' : 'Only the Admin, and people the Admin allows, can change Settings.'}</p>` : ''}`;
+    <p class="muted small center">${edit ? 'You can change Settings.' : 'Only the Admin, and people the Admin allows, can change Settings.'}</p>` : ''}</div>`;
+  oneOpen(view, (g) => LS.set('setOpen', g));
   $$('[data-theme-opt]', view).forEach((b) => { b.onclick = () => { setTheme(b.dataset.themeOpt); settingsView(); }; });
   // RRA-085: pay rules for time sheets. The Admin, and managers allowed to change pay.
   $('#payrules')?.addEventListener('click', async () => {
@@ -91,6 +99,17 @@ export async function settingsView() {
     settingsView();
   });
   $('#popups')?.addEventListener('click', async () => { if (!edit) return; s.popups = s.popups === false; await data.saveSettings(s); settingsView(); });
+  // RRA-105: how many days before an event the reminders start, for the whole team.
+  $('#ev-remind')?.addEventListener('click', async () => {
+    const cur = remindOf({}, s);
+    const v = await sheet({ title: 'Event reminders', right: 'Save',
+      body: `<label class="field"><span>Start reminding the Admin, managers and chefs</span><select id="evr">${REMIND_DAYS.map((d) => `<option value="${d}"${d === cur ? ' selected' : ''}>${esc(remindLabel(d))}</option>`).join('')}</select></label>
+        <p class="muted small">This is the usual choice for every event. Each event can change it under Edit.</p>`,
+      onMount: (api) => { api.onRight = () => api.close({ d: +$('#evr', api.el).value }); } });
+    if (!v) return;
+    await data.saveSettings({ ...(await data.settings()), eventRemind: v.d });
+    toast('Saved for everyone'); settingsView();
+  });
   $('#target')?.addEventListener('click', async () => {
     const v = await sheet({
       title: 'Food cost target', right: 'Save',
@@ -241,10 +260,11 @@ export async function dedupeView() {
   const edit = canChange('settings');
   view.innerHTML = n ? `
     <p class="muted small">Entries with the same name (stock in the same group, saved prep at the same station). The one with the most filled in is kept; anything only a copy had (count, par, vendor, price) is copied onto it, and links to vendors and house recipes move over. Then the copies are taken out for everyone.</p>
-    ${Object.entries(found).filter(([, gs]) => gs.length).map(([c, gs]) => `<div class="section-label">${esc(AREA_LABELS[c])} · ${gs.reduce((m, g) => m + g.length - 1, 0)} to remove</div>
-      <div class="group">${gs.map((g) => `<div class="row"><span class="grow"><span class="title">${esc(g[0].name)}</span><span class="sub">${g.length} copies${g[0].group ? ' · ' + esc(g[0].group) : ''}${g[0].section ? ' · ' + esc(g[0].section) : ''} → keep 1</span></span></div>`).join('')}</div>`).join('')}
+    ${Object.entries(found).filter(([, gs]) => gs.length).map(([c, gs]) => `<button class="acc-head" type="button" data-g="${esc(c)}"><span class="grow">${esc(AREA_LABELS[c])}</span><span class="meta">${gs.reduce((m, g) => m + g.length - 1, 0)} to remove</span></button>
+      <div class="group acc-body" hidden>${gs.map((g) => `<div class="row"><span class="grow"><span class="title">${esc(g[0].name)}</span><span class="sub">${g.length} copies${g[0].group ? ' · ' + esc(g[0].group) : ''}${g[0].section ? ' · ' + esc(g[0].section) : ''} → keep 1</span></span></div>`).join('')}</div>`).join('')}
     ${edit ? `<button class="btn block" id="merge" type="button" style="margin-top:14px">Merge ${n} duplicate${n > 1 ? 's' : ''}</button>` : '<p class="muted small">Only the Admin, and people allowed to change Settings, can merge.</p>'}`
     : '<div class="empty">No duplicates. Everything has one entry.</div>';
+  oneOpen(view);
   $('#merge')?.addEventListener('click', async () => {
     const ok = await sheet({ title: 'Merge duplicates?', right: 'Merge', body: `<p>Take out <b>${n}</b> duplicate entries for the whole team? This can't be undone, but nothing filled in is lost.</p>` });
     if (!ok) return;

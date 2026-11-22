@@ -16,11 +16,14 @@ import { stockView, neededView, ordersView, vendorsView } from './stock.js';
 import { boardView, unreadPosts } from './board.js';
 import { prepView } from './prep.js';
 import { scheduleView, staffView, ensureStaffFor, staffList, schedulePrintView, swapPopups, shiftTimesView } from './schedule.js';
-import { eventsView, eventView } from './events.js';
+import { eventsView, eventView, dueEvents, eventPopups } from './events.js';
 import { costsView } from './costs.js';
 import { loungeView, timesheetView, timesheetsView, canTime } from './lounge.js';
 import { settingsView, listView, rolesView, personView, dedupeView } from './settings.js';
 import { applyMenu, applyVendors, applySupplies } from './menu.js';
+import { payrollView, payRunView, payRunDoneView, payHistoryView, myPayView, tipRulesView, paySettingsView } from './payroll.js';
+import { payrollSettings, hasPayroll } from './paycalc.js';
+import { posView, posCheckView, posPayView, ticketsView, posSalesView, posSettingsView, canOrder, canKitchen, canSales } from './pos.js';
 
 import { $, $$, esc, view, dlg, LS, isIOS, standalone, toast, copy, share, pasteInto, sheet, setTitle, setChrome, fmtDate, session, wideMQ, THEMES, getTheme } from './ui.js';
 
@@ -176,9 +179,14 @@ async function updateBadge() {
   $('#bell-dot').hidden = !n;
   const sb = $('#side-badge');
   if (sb) { sb.hidden = !n; sb.textContent = n; }
+  // RRA-105: events coming up, on the sidebar and More.
+  const ev = profile ? (await dueEvents().catch(() => [])).length : 0;
+  for (const b of $$('#ev-badge, #more-ev-badge')) { b.hidden = !ev; b.textContent = ev; }
 }
 
 // Sidebar for tablets and computers (RRA-051): every section, no More tab.
+// Payroll menu entries (RRA-095): known once settings are read.
+async function payFlags() { const ok = hasPayroll(await payrollSettings()); renderSide.pay = ok; moreView.pay = ok; return ok; }
 function renderSide() {
   const link = (r, label, extra = '') => `<a href="#/${r}" data-r="${r}"><span class="grow">${label}</span>${extra}</a>`;
   const items = [
@@ -191,7 +199,11 @@ function renderSide() {
     canSee('board') ? link('board', '<span class="sub-l">Bulletin board</span>') : '',
     canSee('schedule') ? link('schedule', '<span class="sub-l">Schedule</span>') : '',
     canTime() ? link('timesheets', '<span class="sub-l">Time sheets</span>') : link('timesheet', '<span class="sub-l">My time sheet</span>'),
-    canSee('events') ? link('events', 'Events (BEOs)') : '',
+    myStaff() ? link('mypay', '<span class="sub-l">My pay &amp; tips</span>') : '',
+    renderSide.pay ? link('payroll', 'Payroll') : '',
+    canOrder() ? link('pos', 'Orders (POS)') : '',
+    canKitchen() ? link('tickets', '<span class="sub-l">Kitchen and bar screen</span>') : '',
+    canSee('events') ? link('events', 'Events (BEOs)', '<i id="ev-badge" class="sbadge" hidden></i>') : '',
     canSee('costs') ? link('costs', 'Costs and waste') : '',
     '<hr>',
     link('settings', 'Settings'),
@@ -219,8 +231,13 @@ function moreView() {
       <p class="muted small">${profile.role === 'owner' ? 'Admin phone. Access does not expire.' : `Access stays on while you use it. It ends after ${daysLeft} days without opening the app.`}</p>
     </div>
     <div class="group">
+      ${canOrder() ? '<a class="row" href="#/pos"><span class="grow">Orders (POS)</span></a>' : ''}
+      ${canKitchen() ? '<a class="row" href="#/tickets"><span class="grow">Kitchen and bar screen</span></a>' : ''}
+      ${canSales() ? '<a class="row" href="#/possales"><span class="grow">Today\'s sales</span></a>' : ''}
+      ${moreView.pay ? '<a class="row" href="#/payroll"><span class="grow">Payroll</span></a>' : ''}
+      ${myStaff() ? '<a class="row" href="#/mypay"><span class="grow">My pay &amp; tips</span></a>' : ''}
       ${canSee('schedule') ? '<a class="row" href="#/schedule"><span class="grow">Schedule</span></a>' : ''}
-      ${canSee('events') ? '<a class="row" href="#/events"><span class="grow">Events (BEOs)</span></a>' : ''}
+      ${canSee('events') ? '<a class="row" href="#/events"><span class="grow">Events (BEOs)</span><i id="more-ev-badge" class="sbadge" hidden></i></a>' : ''}
       ${canSee('costs') ? '<a class="row" href="#/costs"><span class="grow">Costs and waste</span></a>' : ''}
     </div>
     <div class="group">
@@ -705,6 +722,21 @@ const routes = {
   lounge: () => loungeView(),
   timesheet: () => timesheetView(),
   timesheets: () => timesheetsView(),
+  // Payroll (RRA-095)
+  payroll: (arg) => payrollView(arg),
+  payrun: (arg) => payRunView(arg),
+  'payrun-done': (id) => payRunDoneView(id),
+  payhistory: () => payHistoryView(),
+  mypay: () => myPayView(),
+  tiprules: () => tipRulesView(),
+  paysettings: () => paySettingsView(),
+  // Point of sale (RRA-101)
+  pos: () => posView(),
+  poscheck: (id) => posCheckView(id),
+  pospay: (id) => posPayView(id),
+  tickets: () => ticketsView(),
+  possales: () => posSalesView(),
+  posset: () => posSettingsView(),
   notices: () => boardView(),
   schedule: (arg) => scheduleView(arg),
   'schedule-print': (arg) => schedulePrintView(arg),
@@ -754,6 +786,9 @@ async function checkRoleGrant() {
     // Others' hours and every pay rate leave this phone (only here, not for the team).
     for (const r of await data.list('payrate')) await data.applyRemote('payrate', r.id, null);
     for (const p of await data.list('punch')) if (p.staffId !== me.id) await data.applyRemote('punch', p.id, null);
+    // Payroll (RRA-095): everyone else's pay leaves too; their own stays.
+    for (const c of ['payrun', 'possales']) for (const d of await data.list(c)) await data.applyRemote(c, d.id, null);
+    for (const c of ['paystub', 'advance', 'tipshare']) for (const d of await data.list(c)) if (d.staffId !== me.id) await data.applyRemote(c, d.id, null);
   }
   if (from !== next.role) {
     sheet({ title: 'Your role changed', left: null, right: 'OK', body: `<p>You're now <b>${esc(access.ROLES[next.role])}</b>. The app has updated what you can see and change.</p>` });
@@ -794,11 +829,12 @@ async function route() {
   }
   await checkRoleGrant();
   if (isHost()) await adminPayKeyCheck();
+  await payFlags();
   renderSide();
   const at = location.hash;
   await (routes[name] || routes.recipes)(arg ? decodeURIComponent(arg) : undefined);
   // RRA-078: swap conflicts for managers, and a manager's question for the requester.
-  if (location.hash === at && !dlg.open && $('#splash').hidden && (await swapPopups().catch(() => false) || await reportPopups().catch(() => false)) && location.hash === at) (routes[name] || routes.recipes)(arg ? decodeURIComponent(arg) : undefined);
+  if (location.hash === at && !dlg.open && $('#splash').hidden && (await swapPopups().catch(() => false) || await reportPopups().catch(() => false) || await eventPopups().catch(() => false)) && location.hash === at) (routes[name] || routes.recipes)(arg ? decodeURIComponent(arg) : undefined);
   // A slow screen can finish after a quicker tap: show what the address says.
   if (location.hash !== at && !dlg.open) route();
 }
