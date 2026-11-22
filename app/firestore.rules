@@ -1,0 +1,18 @@
+rules_version = '2';
+// Restaurant app: every restaurant's data lives under teams/<teamId> (RRA-031). Paste into Firebase console → Firestore → Rules → Publish.
+// Phones sign in anonymously. Every record is encrypted on the phone with the
+// team key before it is written, so these rules only keep out the public and
+// cap the size of each record.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /teams/{team}/docs/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.data.keys().hasOnly(['c', 'i', 'u', 'd', 'iv', 'ct'])
+        && request.resource.data.ct.size() < 900000;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
