@@ -2,7 +2,7 @@
 // print-friendly view with batch scaling (RRA-003) and plate cost (RRA-011).
 
 import * as data from './data.js';
-import { $, $$, esc, view, LS, sheet, toast, setTitle, setChrome, fmtDate, session, isWide, chip, searchBox } from './ui.js';
+import { $, $$, esc, view, LS, sheet, toast, setTitle, setChrome, fmtDate, session, isWide, chip, searchBox, oneOpen } from './ui.js';
 import { canChange, canSee } from './perms.js';
 import { printButtons, wirePrint } from './pdf.js';
 import { loungeButton } from './lounge.js';
@@ -35,16 +35,18 @@ export async function recipesView() {
   const lounge = await loungeButton(); // RRA-054: one tap to the lounge
   const costs = canSee('costs');
   const nameOf = (id) => list.find((x) => x.id === id)?.name;
-  // Tablet and computer (RRA-051): wide tables with every section open.
+  // Tablet and computer (RRA-051): wide tables, one section open at a time (RRA-094).
+  const isOpen = (g) => !!q || openKey === g;
+  const band = (g, cols, extra = '') => `<tbody><tr class="band acc-band${isOpen(g) ? ' open' : ''}" data-g="${esc(g)}"><td colspan="${cols}">${esc(g)} <span class="muted">· ${groups[g].length}</span>${extra}</td></tr></tbody><tbody${isOpen(g) ? '' : ' hidden'}>`;
   const wideTable = () => `<p class="muted small">Showing ${shown.length} of ${list.filter((r) => r.kind === kind).length} ${kind === 'dish' ? 'dishes' : 'house recipes'}</p>
     <div class="wtable-wrap"><table class="wtable">${kind === 'dish'
     ? `<thead><tr><th>Dish</th><th>Type</th><th>Uses</th><th class="num">Price</th>${costs ? '<th class="num">Plate cost</th>' : ''}</tr></thead>
-      ${keys.map((g) => `<tbody><tr class="band"><td colspan="${costs ? 5 : 4}">${esc(g)} <span class="muted">· ${groups[g].length}</span>${edit ? ` <button class="btn plain small" type="button" data-addto="${esc(g)}">+ Add</button>` : ''}</td></tr>
+      ${keys.map((g) => `${band(g, costs ? 5 : 4, edit ? ` <button class="btn plain small" type="button" data-addto="${esc(g)}">+ Add</button>` : '')}
         ${groups[g].map((r) => `<tr data-href="#/recipe/${r.id}"><td><span class="link">${esc(r.name)}</span></td><td>${chip('Dish', 'gray')}</td>
           <td>${(r.uses || []).map(nameOf).filter(Boolean).map((n) => chip(n, 'purple')).join(' ') || `<span class="muted small">${esc((r.ingredients || []).slice(0, 3).map((i) => i.item).join(', '))}</span>`}</td>
           <td class="num">${r.price ? data.money(r.price) : '—'}</td>${costs ? `<td class="num">${plateCost(r) !== null ? data.money(plateCost(r)) : '—'}</td>` : ''}</tr>`).join('')}</tbody>`).join('')}`
     : `<thead><tr><th>Recipe</th><th>Type</th><th>Yield</th><th>Storage</th><th>Used in</th></tr></thead>
-      ${keys.map((g) => `<tbody><tr class="band"><td colspan="5">${esc(g)} <span class="muted">· ${groups[g].length}</span></td></tr>
+      ${keys.map((g) => `${band(g, 5)}
         ${groups[g].map((r) => `<tr data-href="#/recipe/${r.id}"><td><span class="link">${esc(r.name)}</span></td><td>${chip('Sub recipe', 'purple')}</td>
           <td>${esc(r.yield || '—')}</td><td>${esc(r.storage || '—')}</td><td class="num">${list.filter((x) => (x.uses || []).includes(r.id)).length || '—'}</td></tr>`).join('')}</tbody>`).join('')}`}
     </table></div>`;
@@ -63,14 +65,7 @@ export async function recipesView() {
       ? `No dishes yet.${edit ? '<br>Tap <b>UPLOAD</b> to add the first one.' : ''}`
       : `No house recipes yet.${edit ? '<br>Tap <b>NEW RECIPE</b> to add a rub, sauce or dressing.' : ''}`}</div>`}`;
   $$('.segmented button', view).forEach((b) => { b.onclick = () => { LS.set('recipeKind', b.dataset.k); recipesView(); }; });
-  $$('.acc-head', view).forEach((h) => {
-    h.onclick = () => {
-      const opening = !h.classList.contains('open');
-      $$('.acc-head', view).forEach((x) => { x.classList.toggle('open', false); x.nextElementSibling.hidden = true; });
-      if (opening) { h.classList.add('open'); h.nextElementSibling.hidden = false; }
-      recipesView.open = { ...(recipesView.open || {}), [kind]: opening ? h.dataset.g : null };
-    };
-  });
+  oneOpen(view, (g) => { recipesView.open = { ...(recipesView.open || {}), [kind]: g }; });
   $$('tr[data-href]', view).forEach((tr) => { tr.onclick = () => { location.hash = tr.dataset.href; }; });
   // RRA-086: add a menu item (a sauce, a drink) straight into its section.
   $$('[data-addto]', view).forEach((b) => { b.onclick = (e) => { e.stopPropagation(); recipeDialog(null, 'dish', b.dataset.addto); }; });
@@ -225,7 +220,7 @@ export async function recipeDialog(existing, kind = 'house', section = null) {
   const saved = await sheet({
     title: existing ? 'Edit recipe' : r.kind === 'dish' ? 'New dish' : 'New recipe', right: 'Save',
     body: `
-      <label class="field"><span>Name</span><input type="text" id="r-name" value="${esc(r.name || '')}" placeholder="${r.kind === 'dish' ? 'e.g. The Bootlegger' : 'e.g. Honey Sriracha wing sauce'}" autocomplete="off"></label>
+      <label class="field"><span>Name</span><input type="text" id="r-name" value="${esc(r.name || '')}" placeholder="${r.kind === 'dish' ? 'e.g. Classic cheeseburger' : 'e.g. Honey Sriracha wing sauce'}" autocomplete="off"></label>
       <div class="segmented" id="r-kind">
         <button type="button" data-k="dish">Dish</button><button type="button" data-k="house">House recipe</button>
       </div>

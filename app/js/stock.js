@@ -2,7 +2,7 @@
 // and order guides by vendor (RRA-008). Starts from the starter list (RRA-024).
 
 import * as data from './data.js';
-import { $, $$, esc, view, LS, sheet, toast, setTitle, setChrome, copy, fmtDate, session, isWide, chip, searchBox } from './ui.js';
+import { $, $$, esc, view, LS, sheet, toast, setTitle, setChrome, copy, fmtDate, session, isWide, chip, searchBox, oneOpen } from './ui.js';
 import { canChange, canSee } from './perms.js';
 import { STOCK_STATUS, STOCK_TABS, isFood } from './starter-stock.js';
 import { printButtons, wirePrint } from './pdf.js';
@@ -47,11 +47,11 @@ export async function stockView(forceEdit) {
   const wide = isWide();
   const costs = canSee('costs');
   const vName = (id) => vs.find((v) => v.id === id)?.name || '';
-  // Tablet and computer (RRA-051): one wide table, every group open.
+  // Tablet and computer (RRA-051): one wide table, one group open at a time (RRA-094).
   const wideTable = () => (shown.length ? `<p class="muted small">Showing ${shown.length} of ${list.length} items</p>
     <div class="wtable-wrap"><table class="wtable">
       <thead><tr><th>Item</th><th>Type</th><th>Unit</th><th class="num">On hand</th><th class="num">Par</th><th>Status</th><th>Vendor</th>${costs ? '<th class="num">Value</th>' : ''}</tr></thead>
-      ${Object.entries(groups).map(([g, its]) => `<tbody><tr class="band"><td colspan="${costs ? 8 : 7}">${esc(g)} <span class="muted">· ${its.length}${its.filter(isLow).length ? ` · ${its.filter(isLow).length} low` : ''}</span></td></tr>
+      ${Object.entries(groups).map(([g, its]) => `<tbody><tr class="band acc-band${q || stockView.open === g ? ' open' : ''}" data-g="${esc(g)}"><td colspan="${costs ? 8 : 7}">${esc(g)} <span class="muted">· ${its.length}</span>${its.filter(isLow).length ? ` ${chip(`${its.filter(isLow).length} low`, 'orange')}` : ''}</td></tr></tbody><tbody${q || stockView.open === g ? '' : ' hidden'}>
         ${its.map((s) => `<tr data-id="${s.id}">
           <td>${editing ? `<button class="rm" type="button" data-rm="${s.id}" aria-label="Remove ${esc(s.name)}">−</button> <span class="link" data-edit="${s.id}">${esc(s.name)}</span>` : esc(s.name)}</td>
           <td>${isFood(s.group) ? chip('Ingredient', 'blue') : chip('Supply', 'gray')}</td>
@@ -90,14 +90,7 @@ export async function stockView(forceEdit) {
   wireTabs();
   $$('[data-cat]', view).forEach((b) => { b.onclick = () => { LS.set('stockCat', b.dataset.cat); stockView.q = ''; stockView(); }; });
   // One section open at a time (RRA-041); a search opens every match.
-  $$('.acc-head', view).forEach((h) => {
-    h.onclick = () => {
-      const opening = !h.classList.contains('open');
-      $$('.acc-head', view).forEach((x) => { x.classList.toggle('open', false); x.nextElementSibling.hidden = true; });
-      if (opening) { h.classList.add('open'); h.nextElementSibling.hidden = false; }
-      stockView.open = opening ? h.dataset.g : null;
-    };
-  });
+  oneOpen(view, (g) => { stockView.open = g; });
   const showDirty = () => { const n = Object.keys(dirty).length; const el = $('#save-n'); if (el) el.textContent = n ? ` (${n})` : ''; };
   showDirty();
   // RRA-049: the mode lives in the address, so a redraw stays on the edit page.
@@ -198,14 +191,15 @@ export async function ordersView() {
   const groups = [...vs.map((v) => ({ v, its: low.filter((s) => s.vendor === v.id) })), { v: { name: 'No vendor set' }, its: low.filter((s) => !vs.some((v) => v.id === s.vendor)) }].filter((g) => g.its.length);
   const text = groups.map((g) => `${g.v.name}${g.v.deadline ? ` (order by ${g.v.deadline})` : ''}\n${g.its.map((s) => `- ${s.name}: ${need(s)} ${s.unit}`).join('\n')}`).join('\n\n');
   view.innerHTML = `${tabs('orders')}
-    ${groups.map((g) => `<div class="section-label">${esc(g.v.name)}${g.v.deadline ? ` · order by ${esc(g.v.deadline)}` : ''}</div>
-      <div class="group">${g.its.map((s) => `<div class="row"><span class="grow">${esc(s.name)}</span><span class="meta">${need(s)} ${esc(s.unit)}</span></div>`).join('')}</div>`).join('')
+    ${groups.map((g) => `<button class="acc-head${ordersView.open === (g.v.id || "none") ? ' open' : ''}" type="button" data-g="${esc(g.v.id || "none")}"><span class="grow">${esc(g.v.name)}${g.v.deadline ? ` <span class="muted small">· order by ${esc(g.v.deadline)}</span>` : ''}</span><span class="meta">${g.its.length} item${g.its.length > 1 ? 's' : ''}</span></button>
+      <div class="group acc-body"${ordersView.open === (g.v.id || "none") ? '' : ' hidden'}>${g.its.map((s) => `<div class="row"><span class="grow">${esc(s.name)}</span><span class="meta">${need(s)} ${esc(s.unit)}</span></div>`).join('')}</div>`).join('')
       || '<div class="empty">Nothing to order. Everything is at or above par.</div>'}
     ${groups.length ? `<div class="paper print-only"><h3>Order guides · ${new Date().toLocaleDateString()}</h3><pre style="white-space:pre-wrap;font:inherit">${esc(text)}</pre></div>
       ${printButtons()}
       <button class="btn plain block no-print" id="copy" type="button">Copy to send</button>` : ''}
     ${canChange('orders') ? '<div class="group no-print" style="margin-top:14px"><a class="row" href="#/vendors"><span class="grow">Add or remove vendors</span><span class="meta">Settings</span></a></div>' : ''}`;
   wireTabs();
+  oneOpen(view, (g) => { ordersView.open = g; });
   wirePrint({
     $, title: `Order guides - ${new Date().toLocaleDateString()}`,
     getLines: () => groups.flatMap((g) => [`# ${g.v.name}${g.v.deadline ? ` (order by ${g.v.deadline})` : ''}`, ...g.its.map((s) => `   ${s.name}: ${need(s)} ${s.unit}`), '']),

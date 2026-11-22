@@ -5,10 +5,19 @@
 // brand.js (r/<id>/brand.js), loaded before the app.
 export const BRAND = globalThis.BRAND;
 export const APP_NAME = BRAND.appName;
-export const VERSION = '0.6.0';
-export const BUILD = '2026.11.22-1';
+export const VERSION = '0.7.1';
+export const BUILD = '2026.11.22-2';
 
 export const WHATS_NEW = [
+  {
+    version: '0.7.1', build: '2026.11.22-2', date: '2026-11-22',
+    lines: [
+      'Payroll (More → Payroll), with My pay & tips for everyone in the Lounge. No payroll service is connected yet, so runs are practice runs.',
+      'Point of sale (More → Orders): checks by table or tab, kitchen and bar screen, 86 list, split checks, practice card payments, and Today\'s sales for managers.',
+      'Event reminders for the Admin, managers and chefs, set per event or in Settings → App → Event reminders.',
+      'Shorter pages: lists open one section at a time.',
+    ],
+  },
   {
     version: '0.6.0', build: '2026.11.22-1', date: '2026-11-22',
     lines: [

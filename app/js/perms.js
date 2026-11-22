@@ -16,21 +16,25 @@ export const AREAS = {
   events: 'Events (BEOs)',
   costs: 'Costs and waste',
   settings: 'Settings',
+  pos: 'Point of sale (orders, kitchen screen)', // RRA-101
 };
 
 // Pay and hours (RRA-055): for managers only, and only the Admin sets them.
 export const PAY_AREAS = {
   timesheets: "Time sheets (everyone's hours)",
   payrates: 'Pay rates and pay totals',
+  payrun: 'Submit payroll (RRA-095)',
+  advances: 'Approve early pay (RRA-095)',
 };
 
 const ALL = (v) => Object.fromEntries(Object.keys(AREAS).map((k) => [k, v]));
-const PAY_NONE = { timesheets: 'none', payrates: 'none' };
+const PAY_NONE = { timesheets: 'none', payrates: 'none', payrun: 'none', advances: 'none' };
 
 export const ROLE_DEFAULTS = {
-  manager: { ...ALL('change'), settings: 'change', timesheets: 'change', payrates: 'change' },
+  // Managers review payroll by default; the Admin submits unless they allow it (RRA-095).
+  manager: { ...ALL('change'), settings: 'change', timesheets: 'change', payrates: 'change', payrun: 'see', advances: 'change' },
   chef: { ...ALL('change'), schedule: 'see', settings: 'see', ...PAY_NONE },
-  staff: { ...ALL('see'), prep: 'change', stock: 'change', board: 'change', costs: 'none', settings: 'none', ...PAY_NONE },
+  staff: { ...ALL('see'), prep: 'change', stock: 'change', board: 'change', costs: 'none', settings: 'none', pos: 'change', ...PAY_NONE },
 };
 
 export const isHost = () => session.profile?.role === 'owner';
