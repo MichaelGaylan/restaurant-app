@@ -1,0 +1,47 @@
+/* Restaurant Setup wizard (RSW): only what the shared app.css doesn't have. */
+
+.rsw-steps { display: flex; gap: 4px; margin: 4px 0 14px; }
+.rsw-steps button { flex: 1; min-width: 0; border: 0; background: none; color: var(--text-2); font: inherit; font-size: .72rem; padding: 4px 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rsw-steps b { width: 26px; height: 26px; border-radius: 13px; display: grid; place-items: center; font-size: .85rem; background: color-mix(in srgb, var(--text-2) 18%, transparent); color: var(--text); }
+.rsw-steps button.done b { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.rsw-steps button.on { color: var(--text); font-weight: 600; }
+.rsw-steps button.on b { background: var(--accent); color: var(--on-accent); }
+.rsw-steps span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.rsw-nav { margin: 18px 0 8px; justify-content: space-between; }
+.rsw-nav .btn { min-width: 120px; }
+
+/* File pickers styled as buttons */
+.rsw-file { position: relative; overflow: hidden; text-align: center; }
+.rsw-file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 100px; }
+
+.rsw-logo-box { height: 96px; display: grid; place-items: center; border-radius: 12px; margin-bottom: 8px;
+  background: repeating-conic-gradient(color-mix(in srgb, var(--text-2) 14%, transparent) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.rsw-logo-box img { max-height: 80px; max-width: 100%; }
+.rsw-icons { display: flex; align-items: flex-end; gap: 28px; margin: 6px 0 4px; }
+.rsw-icons figure { margin: 0; text-align: center; }
+.rsw-icons figcaption { font-size: .75rem; color: var(--text-2); margin-top: 4px; }
+.rsw-ios-icon { border-radius: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+
+.rsw-swatches { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 8px; }
+.rsw-sw { width: 38px; height: 38px; border-radius: 19px; border: 3px solid var(--card); box-shadow: 0 0 0 1px var(--sep); cursor: pointer; padding: 0; position: relative; overflow: hidden; }
+.rsw-sw.on { box-shadow: 0 0 0 2.5px var(--text); }
+.rsw-sw-own { background-image: conic-gradient(red, yellow, lime, cyan, blue, magenta, red) !important; }
+.rsw-sw-own input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.rsw-sample .btn-row { margin: 0; }
+.rsw-dot { display: inline-block; width: 12px; height: 12px; border-radius: 6px; vertical-align: -1px; }
+.rsw-ol { padding-left: 20px; margin: 0 0 8px; }
+.rsw-ol li { margin: 0 0 6px; }
+.rsw-facts > div { display: flex; gap: 10px; padding: 4px 0; overflow-wrap: anywhere; }
+.rsw-facts .muted { flex: none; width: 92px; }
+
+/* iPhone-sized preview: a 390 × 844 screen, scaled to fit */
+.rsw-phone-wrap { display: flex; justify-content: center; margin: 6px 0 14px; }
+.rsw-phone { --w: min(300px, calc(100vw - 64px)); width: var(--w); aspect-ratio: 390 / 844; border-radius: calc(var(--w) * .14); padding: 10px; background: #1c1c1e; box-shadow: 0 8px 30px rgba(0,0,0,.25), inset 0 0 0 2px #3a3a3c; position: relative; }
+.rsw-phone iframe { border: 0; width: 390px; height: 844px; transform-origin: 0 0; border-radius: 44px; background: #fff; display: block; } /* scaled to fit by wizard.js */
+.rsw-phone > * { overflow: hidden; }
+.rsw-home { height: 100%; border-radius: calc(var(--w) * .12); background: linear-gradient(160deg, #6b8cff, #9b5de5 55%, #f15bb5); display: grid; grid-template-columns: repeat(4, 1fr); align-content: start; gap: 18px 8px; padding: 48px 14px; }
+.rsw-phone.dark .rsw-home { background: linear-gradient(160deg, #1d2b64, #3a1c71 55%, #5c1f4a); }
+.rsw-app { display: flex; flex-direction: column; align-items: center; gap: 4px; color: #fff; font-size: 11px; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.rsw-app img, .rsw-app i { width: 56px; height: 56px; border-radius: 13px; display: block; }
+.rsw-app.ghost i { background: rgba(255,255,255,.25); }
+.rsw-app span { max-width: 70px; white-space: nowrap; overflow: hidden; }

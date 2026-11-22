@@ -1,0 +1,12 @@
+{
+  "_how": "Messages to everyone. Add a new entry at the top with a new id. The app shows it once as a popup and keeps it in Notices.",
+  "messages": [
+    {
+      "id": "2026-11-22-welcome",
+      "date": "2026-11-22",
+      "title": "Welcome to Harbor Message Board",
+      "body": "This is where your messages and notices from management will show up.",
+      "from": "Management"
+    }
+  ]
+}
