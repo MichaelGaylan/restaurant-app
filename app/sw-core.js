@@ -3,7 +3,7 @@
 // Bump APP_BUILD with every release of the shared app (it follows js/config.js);
 // phones notice the change and update. A restaurant's own brandVersion does the
 // same when its name or pictures change.
-const APP_BUILD = '0.7.1-2026.11.22-2';
+const APP_BUILD = '0.8.0-2026.11.24-1';
 const B = self.BRAND;
 const CACHE = `${B.teamId}-${APP_BUILD}-${B.brandVersion || 1}`;
 const APP = [
@@ -11,12 +11,14 @@ const APP = [
   'js/app.js', 'js/config.js', 'js/access.js', 'js/crypto.js', 'js/store.js', 'js/starter-stock.js', 'js/menu.js', 'js/pdf.js', 'js/lounge.js',
   'js/ui.js', 'js/data.js', 'js/perms.js', 'js/recipes.js', 'js/stock.js', 'js/board.js', 'js/prep.js',
   'js/schedule.js', 'js/events.js', 'js/costs.js', 'js/settings.js', 'js/sync.js', 'js/audience.js', 'js/dedupe.js', 'js/reports.js',
-  'js/payroll.js', 'js/paycalc.js', 'js/provider.js', 'js/pos.js',
+  'js/payroll.js', 'js/paycalc.js', 'js/provider.js', 'js/pos.js', 'js/giftcards.js', 'js/music.js', 'js/cleardata.js',
 ].map((f) => '../../app/' + f);
 const SHELL = [
   './', 'index.html', 'brand.js', 'manifest.webmanifest',
   B.logo, B.icon180, B.icon192, B.icon512, B.favicon,
   ...APP,
+  // The restaurant's dish pictures (brand.js menuPhotos), for the POS tiles and Recipes.
+  ...new Set(Object.values(B.menuPhotos || {}).map((f) => (/[/:]/.test(f) ? f : (B.menuPhotoDir || '') + f))),
 ].filter(Boolean);
 
 // A new version takes over as soon as it has downloaded; the page reloads

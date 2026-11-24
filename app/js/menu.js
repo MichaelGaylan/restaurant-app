@@ -8,9 +8,18 @@ import { STARTER_STOCK, REPLACED_STOCK, NON_FOOD } from './starter-stock.js';
 
 export const MENU_VERSION = 'shared-1';
 
-// Each restaurant's menu is added in the app (Recipe archive) or later from
-// its own content file (RSW Build list). The shared app ships none.
-export const MENU = [];
+// Each restaurant's menu (names, sections, prices) lives in its brand.js;
+// a restaurant without one starts with none and adds dishes in Recipes.
+export const MENU = globalThis.BRAND.menu || [];
+
+// The dish's picture: a Recipes photo wins, then js/brand.js menuPhotos.
+export function dishPhoto(d) {
+  if (!d) return '';
+  if (d.photo) return d.photo;
+  const B = globalThis.BRAND || {};
+  const f = (B.menuPhotos || {})[d.name];
+  return f ? (/[/:]/.test(f) ? f : (B.menuPhotoDir || '') + f) : '';
+}
 
 export const MENU_SECTIONS = MENU.map((m) => m.section);
 const OLD_DEFAULT_SECTIONS = ['Wings', 'Burgers', 'Sandwiches', 'Baskets', 'Salads', 'Appetizers', 'Sides', 'Desserts'];

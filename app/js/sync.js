@@ -254,3 +254,10 @@ export async function start(profile, onStatus = () => {}) {
     set('error', e.message || String(e));
   }
 }
+
+// RRA-106: every id the team's shared data holds for a collection, including
+// records sealed to other phones that this phone can't open.
+export function remoteIds(coll) {
+  if (!lastSnap) return [];
+  return lastSnap.docs.map((d) => d.data()).filter((r) => r.c === coll && !r.d).map((r) => r.i);
+}

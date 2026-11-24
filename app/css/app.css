@@ -522,6 +522,13 @@ html[data-theme="dark"] { --c-green: #30d158; --c-orange: #ff9f0a; --c-blue: #40
   .search { max-width: 420px; }
 }
 @media print { .side { display: none !important; } body .view { margin: 0 !important; } }
+/* RRA-107: full-screen work screens on iPads and computers (no left menu). */
+@media (min-width: 768px) {
+  body.full .side { display: none; }
+  body.full:not(.locked) .view { margin-left: 0; max-width: none; padding-left: 24px; padding-right: 24px; }
+  body.full:not(.locked) .top-title { padding-left: 24px; padding-right: 24px; }
+  body.full:not(.locked) .stock-tools { margin: 0 -24px; padding: 6px 24px 2px; }
+}
 @media (min-width: 768px) and (max-width: 1099px) {
   :root { --side-w: 196px; }
   body:not(.locked) .view { padding-left: 18px; padding-right: 18px; }
@@ -719,3 +726,137 @@ svg.lock { width: 11px; height: 11px; vertical-align: -1px; }
 .lounge .ev-due { margin: 0 0 12px; border-left: 4px solid var(--c-orange); }
 .group .row .sbadge#more-ev-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--danger); color: #fff; font-size: 11px; font-style: normal; font-weight: 700; display: grid; place-items: center; }
 .group .row .sbadge#more-ev-badge[hidden] { display: none; }
+
+/* RRA-108: POS picture menu. Check on the left, photo tiles on the right,
+   menu sections as tabs under the tiles. */
+.pos-wrap { display: block; }
+.pos-head { display: grid; grid-template-columns: 1fr 104px 70px; gap: 6px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-2); padding: 2px 0 6px; border-bottom: .5px solid var(--sep); }
+.pos-head span:nth-child(2) { text-align: center; }
+.pos-head span:last-child { text-align: right; }
+.pos-check .pos-line { display: grid; grid-template-columns: 1fr 104px 70px; gap: 6px; align-items: center; cursor: default; }
+.pos-name { background: none; border: 0; padding: 0; font: inherit; color: var(--text); text-align: left; cursor: pointer; min-width: 0; }
+.pos-name > span:first-child { font-weight: 600; }
+.pos-name .pos-st { display: block; }
+.pos-qty { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.pos-qty b { min-width: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.pos-qty button { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--card-2); color: var(--accent); font: inherit; font-size: 1.2rem; font-weight: 700; line-height: 1; cursor: pointer; }
+.pos-qty button:active { transform: scale(.94); }
+.pos-line.void .pos-name { text-decoration: line-through; color: var(--text-2); }
+.pos-check .pos-actions { margin: 12px 0 2px; }
+.pos-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.pos-tile { border: 0; padding: 0; border-radius: var(--radius); overflow: hidden; background: var(--card); color: var(--text); font: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; box-shadow: 0 .5px 0 var(--sep), 0 1px 4px rgba(0,0,0,.06); }
+.pos-tile:active { transform: scale(.97); }
+.pos-pic { display: block; aspect-ratio: 4 / 3; background: var(--card-2); }
+.pos-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pos-tile.nopic .pos-pic { background: var(--tile); display: grid; place-items: center; padding: 8px; }
+.pos-tile.nopic .pos-pic span { color: #fff; font-weight: 800; font-size: 1rem; text-align: center; line-height: 1.15; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.pos-cap { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px 8px; }
+.pos-tn { font-weight: 600; font-size: .86rem; line-height: 1.2; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.pos-cap small { color: var(--text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pos-tile.out { opacity: .4; filter: grayscale(1); cursor: not-allowed; }
+.pos-tile.out .pos-cap small { color: var(--danger); }
+.pos-tabs { padding: 0 0 10px; }
+.pos-x { color: var(--accent); }
+@media (max-width: 767px) {
+  .pos-grid { grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  .pos-cap { padding: 5px 6px 6px; }
+  .pos-tn { font-size: .76rem; }
+  .pos-cap small { font-size: .72rem; }
+  .pos-tile.nopic .pos-pic span { font-size: .8rem; }
+  .pos-tabs { position: sticky; top: var(--hdr); z-index: 5; background: var(--bg); margin: 0 -16px; padding: 8px 16px; }
+}
+@media (max-width: 359px) { .pos-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 768px) {
+  .pos-wrap { display: grid; grid-template-columns: minmax(320px, 400px) 1fr; gap: 18px; align-items: start; }
+  .pos-left { position: sticky; top: calc(var(--hdr) + 12px); max-height: calc(100vh - var(--hdr) - 24px); overflow-y: auto; }
+  .pos-left .pos-check { margin-top: 0; }
+}
+
+/* RRA-109: Music */
+.mu-now { text-align: center; }
+.mu-title { font-weight: 700; font-size: 1.1rem; margin-top: 4px; overflow-wrap: anywhere; }
+.mu-ctrl { display: flex; justify-content: center; align-items: center; gap: 14px; margin: 14px 0 6px; }
+.mu-ctrl button { width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--card-2); color: var(--text); font-size: 1.2rem; cursor: pointer; }
+.mu-ctrl button.big { width: 64px; height: 64px; background: var(--accent); color: var(--on-accent); font-size: 1.5rem; }
+.mu-ctrl button.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.mu-ctrl button:disabled { opacity: .4; cursor: default; }
+.mu-vol { display: flex; align-items: center; gap: 8px; max-width: 320px; margin: 4px auto 0; }
+.mu-vol input { flex: 1; accent-color: var(--accent); }
+.mu-list .row.on .title { color: var(--accent); font-weight: 700; }
+.mu-n { width: 26px; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums; flex: none; }
+.mu-st { background: none; border: 0; padding: 0; font: inherit; color: var(--text); text-align: left; cursor: pointer; display: flex; flex-direction: column; min-width: 0; }
+.row.on .mu-st .title { color: var(--accent); font-weight: 700; }
+label.btn { cursor: pointer; }
+.mu-mini { position: fixed; z-index: 25; right: 12px; bottom: calc(var(--tabs-h) + 10px); display: flex; align-items: center; gap: 6px; max-width: min(360px, calc(100vw - 24px)); padding: 6px 6px 6px 14px; border-radius: 999px; background: var(--card); box-shadow: 0 4px 18px rgba(0,0,0,.18); border: .5px solid var(--sep); }
+.mu-mini[hidden] { display: none; }
+.mu-mini-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 600; font-size: .88rem; }
+.mu-mini button { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; flex: none; }
+@media (min-width: 768px) { .mu-mini { bottom: 16px; right: 16px; } }
+@media print { .mu-mini { display: none !important; } }
+
+/* RRA-111: Gift cards */
+.gc-card { text-align: center; }
+.gc-badge { font-size: 2.4rem; }
+
+/* RRA-106: Clear test data */
+.cd-list .row { cursor: pointer; }
+.cd-list input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--danger); flex: none; }
+@media (min-width: 768px) { .pos-tabs { flex-wrap: wrap; } }
+
+/* RRA-114: seating layout */
+.floor { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), auto); gap: 8px; padding: 12px; border-radius: var(--radius); background: var(--card); margin-bottom: 10px; }
+.fl-t, .fl-cell { aspect-ratio: 1; min-width: 0; border-radius: 14px; border: 0; font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 2px; }
+.fl-t { background: color-mix(in srgb, var(--ok) 16%, var(--card-2)); color: var(--text); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ok) 55%, transparent); }
+.fl-t.k-table { border-radius: 50%; }
+.fl-t.k-bar { border-radius: 50%; transform: scale(.78); }
+.fl-t.k-booth { border-radius: 10px; }
+.fl-t b { font-size: 1.15rem; line-height: 1; }
+.fl-t small { font-size: .68rem; color: var(--text-2); white-space: nowrap; }
+.fl-t.busy { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.fl-t.busy small { color: inherit; opacity: .9; }
+.fl-t .fl-amt { font-weight: 700; }
+.fl-t:active { transform: scale(.95); }
+.fl-cell.fl-empty { background: transparent; color: var(--text-2); box-shadow: inset 0 0 0 1.5px var(--sep); font-size: 1.1rem; }
+.floor.edit .fl-t { box-shadow: inset 0 0 0 2px var(--accent); }
+.fl-key { display: flex; gap: 16px; justify-content: center; margin-bottom: 12px; }
+.fl-dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; background: color-mix(in srgb, var(--ok) 30%, var(--card-2)); box-shadow: inset 0 0 0 1.5px var(--ok); }
+.fl-dot.busy { background: var(--accent); box-shadow: none; }
+@media (max-width: 767px) {
+  .floor { gap: 4px; padding: 6px; margin: 0 -8px 10px; }
+  .fl-t small { display: none; }
+  .fl-t b { font-size: .9rem; }
+  .fl-t.busy .fl-amt { display: none; }
+}
+.num-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; margin: 6px 0 12px; }
+.num-pick button { height: 46px; border: 0; border-radius: 12px; background: var(--card-2); color: var(--text); font: inherit; font-weight: 700; font-size: 1.05rem; cursor: pointer; }
+.num-pick button.on { background: var(--accent); color: var(--on-accent); }
+.num-pick button:disabled { opacity: .3; cursor: default; }
+
+/* Phones: the check folds to one line so the menu stays in reach (RRA-114). */
+.pos-fold { display: none; }
+@media (max-width: 767px) {
+  .pos-fold { display: flex; justify-content: space-between; width: 100%; border: 0; background: none; font: inherit; font-weight: 600; color: var(--text); padding: 2px 0 8px; cursor: pointer; }
+  .pos-fold span { color: var(--accent); }
+  .pos-check.folded .pos-head, .pos-check.folded .pos-seat { display: none; }
+}
+
+/* RRA-118: open tables as tabs across the top of a check */
+.pos-ttabs { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 12px; margin-bottom: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.pos-ttabs::-webkit-scrollbar { display: none; }
+.pos-ttabs a { flex: none; display: flex; flex-direction: column; align-items: center; min-width: 84px; padding: 7px 12px; border-radius: 12px; background: var(--card); color: var(--text); text-decoration: none; box-shadow: inset 0 0 0 1px var(--sep); }
+.pos-ttabs a b { font-size: .95rem; white-space: nowrap; }
+.pos-ttabs a small { font-size: .72rem; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pos-ttabs a.on { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.pos-ttabs a.on small { color: inherit; opacity: .85; }
+.pos-ttabs a.add { justify-content: center; color: var(--accent); font-weight: 700; min-width: 70px; }
+.pos-ttabs a.add { flex-direction: row; align-items: center; white-space: nowrap; border: 0; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent); }
+/* Seating areas (RRA-119) */
+.fl-areas { padding-top: 0; }
+.fl-areas i { font-style: normal; font-size: .72rem; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; display: inline-grid; place-items: center; background: var(--danger); color: #fff; margin-left: 4px; }
+.fl-areas .add { background: transparent; color: var(--accent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 45%, transparent); }
+.fl-t.k-high { border-radius: 50%; transform: scale(.88); }
+.fl-t.k-patio { border-radius: 30%; background: color-mix(in srgb, var(--ok) 10%, #f5d76e33); }
+.fl-t.k-patio.busy { background: var(--accent); }
+
+/* Send turns a dull orange once everything on the check has gone to the kitchen (Gaylan, 2026-11-24). */
+.pos-actions .btn.pos-sent, .pos-actions .btn.pos-sent:disabled { background: #b8743a; color: #fff; opacity: 1; }

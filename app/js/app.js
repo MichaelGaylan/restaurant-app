@@ -23,7 +23,10 @@ import { settingsView, listView, rolesView, personView, dedupeView } from './set
 import { applyMenu, applyVendors, applySupplies } from './menu.js';
 import { payrollView, payRunView, payRunDoneView, payHistoryView, myPayView, tipRulesView, paySettingsView } from './payroll.js';
 import { payrollSettings, hasPayroll } from './paycalc.js';
-import { posView, posCheckView, posPayView, ticketsView, posSalesView, posSettingsView, canOrder, canKitchen, canSales } from './pos.js';
+import { posView, posCheckView, posPayView, ticketsView, posSalesView, posSettingsView, canOrder, canKitchen, canSales, posMenu, seatingView } from './pos.js';
+import { giftCardsView } from './giftcards.js';
+import { musicView } from './music.js';
+import { clearDataView } from './cleardata.js';
 
 import { $, $$, esc, view, dlg, LS, isIOS, standalone, toast, copy, share, pasteInto, sheet, setTitle, setChrome, fmtDate, session, wideMQ, THEMES, getTheme } from './ui.js';
 
@@ -201,8 +204,10 @@ function renderSide() {
     canTime() ? link('timesheets', '<span class="sub-l">Time sheets</span>') : link('timesheet', '<span class="sub-l">My time sheet</span>'),
     myStaff() ? link('mypay', '<span class="sub-l">My pay &amp; tips</span>') : '',
     renderSide.pay ? link('payroll', 'Payroll') : '',
-    canOrder() ? link('pos', 'Orders (POS)') : '',
+    canOrder() ? link('pos', 'Orders (POS)').replace('<a ', '<a data-pospop ') : '',
     canKitchen() ? link('tickets', '<span class="sub-l">Kitchen and bar screen</span>') : '',
+    BRAND.giftCards?.url ? link('giftcards', 'Gift cards') : '',
+    link('music', 'Music'),
     canSee('events') ? link('events', 'Events (BEOs)', '<i id="ev-badge" class="sbadge" hidden></i>') : '',
     canSee('costs') ? link('costs', 'Costs and waste') : '',
     '<hr>',
@@ -231,9 +236,11 @@ function moreView() {
       <p class="muted small">${profile.role === 'owner' ? 'Admin phone. Access does not expire.' : `Access stays on while you use it. It ends after ${daysLeft} days without opening the app.`}</p>
     </div>
     <div class="group">
-      ${canOrder() ? '<a class="row" href="#/pos"><span class="grow">Orders (POS)</span></a>' : ''}
+      ${canOrder() ? '<a class="row" href="#/pos" data-pospop><span class="grow">Orders (POS)</span></a>' : ''}
       ${canKitchen() ? '<a class="row" href="#/tickets"><span class="grow">Kitchen and bar screen</span></a>' : ''}
       ${canSales() ? '<a class="row" href="#/possales"><span class="grow">Today\'s sales</span></a>' : ''}
+      ${BRAND.giftCards?.url ? '<a class="row" href="#/giftcards"><span class="grow">Gift cards</span></a>' : ''}
+      <a class="row" href="#/music"><span class="grow">Music</span></a>
       ${moreView.pay ? '<a class="row" href="#/payroll"><span class="grow">Payroll</span></a>' : ''}
       ${myStaff() ? '<a class="row" href="#/mypay"><span class="grow">My pay &amp; tips</span></a>' : ''}
       ${canSee('schedule') ? '<a class="row" href="#/schedule"><span class="grow">Schedule</span></a>' : ''}
@@ -737,6 +744,10 @@ const routes = {
   tickets: () => ticketsView(),
   possales: () => posSalesView(),
   posset: () => posSettingsView(),
+  seating: () => seatingView(), // RRA-114
+  giftcards: () => giftCardsView(), // RRA-111
+  music: () => musicView(), // RRA-109
+  cleardata: () => clearDataView(), // RRA-106
   notices: () => boardView(),
   schedule: (arg) => scheduleView(arg),
   'schedule-print': (arg) => schedulePrintView(arg),
@@ -841,6 +852,8 @@ async function route() {
 
 $('#btn-back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/recipes'));
 $('#btn-bell').onclick = () => { location.hash = '#/board'; };
+// RRA-114: Orders (POS) in the menu opens the Orders popup (Seating and the current orders).
+document.addEventListener('click', (e) => { const a = e.target.closest('a[data-pospop]'); if (!a || !profile) return; e.preventDefault(); posMenu(); });
 window.addEventListener('hashchange', route);
 // Turning a tablet or resizing a window switches between the two layouts.
 wideMQ.addEventListener('change', () => { if (!dlg.open) route(); });

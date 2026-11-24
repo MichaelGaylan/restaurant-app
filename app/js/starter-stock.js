@@ -28,7 +28,8 @@ export const STARTER_STOCK = [
 
 // Tabs at the top of Stock (RRA-058). Food covers every group not listed here.
 export const NON_FOOD = ['Cleaning and chemicals', 'Paper and to-go', 'Smallwares', 'Linens and uniforms'];
-export const STOCK_TABS = [['all', 'All'], ['food', 'Food and bar'], ['Cleaning and chemicals', 'Cleaning'], ['Paper and to-go', 'Paper and to-go'], ['Smallwares', 'Smallwares'], ['Linens and uniforms', 'Linens and uniforms']];
+// RRA-115: no All tab; the count opens on the first group.
+export const STOCK_TABS = [['food', 'Food and bar'], ['Cleaning and chemicals', 'Cleaning'], ['Paper and to-go', 'Paper and to-go'], ['Smallwares', 'Smallwares'], ['Linens and uniforms', 'Linens and uniforms']];
 export const isFood = (group) => !NON_FOOD.includes(group);
 
 // Starter items the 2026-11-19 menu update split or renamed. applyMenu()
