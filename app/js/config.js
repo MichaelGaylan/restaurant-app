@@ -5,10 +5,18 @@
 // brand.js (r/<id>/brand.js), loaded before the app.
 export const BRAND = globalThis.BRAND;
 export const APP_NAME = BRAND.appName;
-export const VERSION = '0.8.0';
-export const BUILD = '2026.11.24-1';
+export const VERSION = '0.8.1';
+export const BUILD = '2026.11.24-2';
 
 export const WHATS_NEW = [
+  {
+    version: '0.8.1', build: '2026.11.24-2', date: '2026-11-24',
+    lines: [
+      'Music: a Test sound button checks the speaker and volume, the player says when a station is connecting or why something isn\'t playing, and the built-in stations try backup servers on their own.',
+      'Order-up alert: bumping a ticket on the kitchen or bar screen tells the server who took the order "Pick up" with a chime and a count on Orders (POS). If nobody taps Picked up in time, every server on the clock gets it in red. The Admin sets the time in POS settings (2 minutes to start).',
+      'Radio dial: tune like a real radio with an AM/FM switch, a tuning knob, seek buttons and preset buttons. The Admin and managers program presets by frequency (for example 104.3 FM), linked to that station\'s online stream, and every phone gets them.',
+    ],
+  },
   {
     version: '0.8.0', build: '2026.11.24-1', date: '2026-11-24',
     lines: [

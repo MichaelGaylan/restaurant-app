@@ -21,6 +21,7 @@ Project code: `RSW`. One shared restaurant app (from Bootleggers Kitchen) and a 
 
 ## 🟣 Done
 ### Shared app 0.8.0 · build 2026.11.24-1
+- [x] RSW-029 · Shared app caught up with Bootleggers 0.8.1: Music Test sound and status line, radio dial with AM/FM switch and presets, order-up alert with Admin-set delay (RRA-124..126) · Infra · S · added 2026-11-24
 - [x] RSW-028 · Shared app caught up with Bootleggers 0.8.0: POS seating with areas, table tabs, Orders popup, picture menu, orange Sent button, Pay popup, full-screen work screens, Music, Gift cards, prep tabs, Stock count tabs, Clear test data (RRA-106..121). Menu, menu photos, POS choices, gift card shop and radio stations are optional keys in each restaurant's brand.js; without them the menu starts empty, tiles are colored and Gift cards is hidden · Infra · M · added 2026-11-24
 ### Shared app 0.7.1 · build 2026.11.22-2
 - [x] RSW-026 · Shared app caught up with Bootleggers 0.7.1: Payroll, Point of sale, event reminders, one-section-at-a-time lists (RRA-094..105). Keeps the shared-app differences (per-restaurant keys, no Bootleggers menu) · Infra · M · added 2026-11-22

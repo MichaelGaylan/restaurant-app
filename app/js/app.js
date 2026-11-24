@@ -23,7 +23,7 @@ import { settingsView, listView, rolesView, personView, dedupeView } from './set
 import { applyMenu, applyVendors, applySupplies } from './menu.js';
 import { payrollView, payRunView, payRunDoneView, payHistoryView, myPayView, tipRulesView, paySettingsView } from './payroll.js';
 import { payrollSettings, hasPayroll } from './paycalc.js';
-import { posView, posCheckView, posPayView, ticketsView, posSalesView, posSettingsView, canOrder, canKitchen, canSales, posMenu, seatingView } from './pos.js';
+import { posView, posCheckView, posPayView, ticketsView, posSalesView, posSettingsView, canOrder, canKitchen, canSales, posMenu, seatingView, startPickups, showPickups } from './pos.js';
 import { giftCardsView } from './giftcards.js';
 import { musicView } from './music.js';
 import { clearDataView } from './cleardata.js';
@@ -204,7 +204,7 @@ function renderSide() {
     canTime() ? link('timesheets', '<span class="sub-l">Time sheets</span>') : link('timesheet', '<span class="sub-l">My time sheet</span>'),
     myStaff() ? link('mypay', '<span class="sub-l">My pay &amp; tips</span>') : '',
     renderSide.pay ? link('payroll', 'Payroll') : '',
-    canOrder() ? link('pos', 'Orders (POS)').replace('<a ', '<a data-pospop ') : '',
+    canOrder() ? link('pos', 'Orders (POS)', '<i class="sbadge pos-badge" hidden></i>').replace('<a ', '<a data-pospop ') : '',
     canKitchen() ? link('tickets', '<span class="sub-l">Kitchen and bar screen</span>') : '',
     BRAND.giftCards?.url ? link('giftcards', 'Gift cards') : '',
     link('music', 'Music'),
@@ -236,7 +236,7 @@ function moreView() {
       <p class="muted small">${profile.role === 'owner' ? 'Admin phone. Access does not expire.' : `Access stays on while you use it. It ends after ${daysLeft} days without opening the app.`}</p>
     </div>
     <div class="group">
-      ${canOrder() ? '<a class="row" href="#/pos" data-pospop><span class="grow">Orders (POS)</span></a>' : ''}
+      ${canOrder() ? '<a class="row" href="#/pos" data-pospop><span class="grow">Orders (POS)</span><i class="sbadge pos-badge" hidden></i></a>' : ''}
       ${canKitchen() ? '<a class="row" href="#/tickets"><span class="grow">Kitchen and bar screen</span></a>' : ''}
       ${canSales() ? '<a class="row" href="#/possales"><span class="grow">Today\'s sales</span></a>' : ''}
       ${BRAND.giftCards?.url ? '<a class="row" href="#/giftcards"><span class="grow">Gift cards</span></a>' : ''}
@@ -896,6 +896,7 @@ async function boot() {
     sync.start(profile, () => { if (location.hash.startsWith('#/settings')) route(); });
     data.onChange((coll, remote) => { if (remote) debounceRoute(); });
     data.onChange(() => updateBadge());
+    startPickups(); // RRA-124: order-up alerts
   }
   // RRA-087: add starter data only after the shared data has arrived, so a
   // second Admin device (an iPad) never adds it all a second time.

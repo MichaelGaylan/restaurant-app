@@ -3,7 +3,7 @@
 // Bump APP_BUILD with every release of the shared app (it follows js/config.js);
 // phones notice the change and update. A restaurant's own brandVersion does the
 // same when its name or pictures change.
-const APP_BUILD = '0.8.0-2026.11.24-1';
+const APP_BUILD = '0.8.1-2026.11.24-2';
 const B = self.BRAND;
 const CACHE = `${B.teamId}-${APP_BUILD}-${B.brandVersion || 1}`;
 const APP = [

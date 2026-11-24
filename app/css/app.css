@@ -860,3 +860,51 @@ label.btn { cursor: pointer; }
 
 /* Send turns a dull orange once everything on the check has gone to the kitchen (Gaylan, 2026-11-24). */
 .pos-actions .btn.pos-sent, .pos-actions .btn.pos-sent:disabled { background: #b8743a; color: #fff; opacity: 1; }
+
+/* Music: what the player is doing (connecting, or why it isn't playing). */
+.mu-status { margin: 2px 0 4px; font-size: 14px; font-weight: 600; color: var(--warn, #b8743a); }
+
+/* Radio dial (RRA-126): a faceplate with an AM/FM switch, scale, needle, knob and presets. */
+.radio { margin: 0 0 14px; padding: 14px; border-radius: var(--radius); background: linear-gradient(#2a2622, #1b1815); color: #f3e6cf; box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 10px rgba(0,0,0,.18); }
+.rd-top { display: flex; align-items: center; gap: 12px; }
+.rd-lcd { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 8px; padding: 8px 12px; border-radius: 10px; background: #0f1a12; box-shadow: inset 0 2px 6px rgba(0,0,0,.6); color: #9ff0b4; font-variant-numeric: tabular-nums; }
+.rd-f { font-size: 2.2rem; font-weight: 700; line-height: 1.05; letter-spacing: .02em; }
+.rd-b { font-size: .8rem; opacity: .8; }
+.rd-n { grid-column: 1 / -1; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .9; }
+.rd-band { display: inline-flex; border-radius: 999px; padding: 3px; background: rgba(0,0,0,.35); flex: none; }
+.rd-band button { min-width: 52px; height: 40px; border: 0; border-radius: 999px; background: transparent; color: inherit; font-weight: 700; font-size: 1rem; cursor: pointer; }
+.rd-band button.on { background: #e8b04a; color: #1b1815; }
+.sheet-body .rd-band { background: var(--card-2); margin-bottom: 10px; }
+.rd-dial { position: relative; height: 64px; margin: 14px 6px 4px; border-radius: 8px; background: linear-gradient(#efe3c8, #e2d2b0); box-shadow: inset 0 2px 5px rgba(0,0,0,.35); touch-action: none; cursor: ew-resize; overflow: hidden; }
+.rd-dial:focus-visible { outline: 3px solid #e8b04a; outline-offset: 2px; }
+.rd-dial i { position: absolute; top: 0; width: 1px; height: 12px; background: #5a4a33; }
+.rd-dial i.big { height: 20px; width: 2px; }
+.rd-lab { position: absolute; top: 22px; transform: translateX(-50%); font-size: .75rem; font-weight: 700; color: #3d3122; font-variant-numeric: tabular-nums; }
+.rd-dot { position: absolute; bottom: 8px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #c0392b; }
+.rd-needle { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; background: #d1201b; box-shadow: 0 0 6px rgba(209,32,27,.7); transition: left .12s; }
+.rd-ctl { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0; }
+.rd-ctl button { width: 46px; height: 46px; border-radius: 50%; border: 0; background: rgba(255,255,255,.1); color: inherit; font-size: 1.3rem; cursor: pointer; }
+.rd-knob { width: 78px; height: 78px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #6b625a, #2b2622 70%); box-shadow: 0 3px 8px rgba(0,0,0,.5), inset 0 1px 1px rgba(255,255,255,.2); position: relative; touch-action: none; cursor: grab; }
+.rd-knob span { position: absolute; left: 50%; top: 7px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; background: #e8b04a; }
+.rd-presets { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 10px; }
+.rd-presets button { display: flex; flex-direction: column; align-items: center; min-width: 76px; max-width: 140px; padding: 6px 10px; border: 0; border-radius: 10px; background: rgba(255,255,255,.1); color: inherit; cursor: pointer; }
+.rd-presets button b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.rd-presets button small { font-size: .72rem; opacity: .85; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rd-presets button.on { background: #e8b04a; color: #1b1815; }
+.rd-presets .muted { color: #d9cbb2; }
+.radio .btn.tonal { background: rgba(255,255,255,.12); color: #f3e6cf; }
+@media (prefers-reduced-motion: reduce) { .rd-needle { transition: none; } }
+
+/* Order-up alerts (RRA-124): a small stack at the top of the screen. */
+.pickups { position: fixed; z-index: 40; top: calc(env(safe-area-inset-top) + 8px); right: 10px; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 20px)); }
+.pickup { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; border-radius: 14px; background: var(--card); border: 2px solid var(--accent); box-shadow: 0 6px 22px rgba(0,0,0,.22); animation: pk-in .25s ease-out; }
+.pickup b { display: block; font-size: 1rem; }
+.pickup small { display: block; color: var(--text-2); font-size: .8rem; }
+.pickup.late { border-color: #d1201b; box-shadow: 0 0 0 3px rgba(209,32,27,.25), 0 6px 22px rgba(0,0,0,.22); }
+.pickup.late .pk-i { animation: pk-ring 1s ease-in-out infinite; }
+.pickup.more { justify-content: center; font-size: .85rem; color: var(--text-2); padding: 6px; border-width: 1px; }
+.pk-i { font-size: 1.3rem; }
+@keyframes pk-in { from { transform: translateY(-8px); opacity: 0; } }
+@keyframes pk-ring { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
+@media (prefers-reduced-motion: reduce) { .pickup, .pickup.late .pk-i { animation: none; } }
+@media print { .pickups { display: none !important; } }

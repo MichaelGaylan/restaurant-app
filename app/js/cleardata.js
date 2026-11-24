@@ -11,7 +11,7 @@ import { APP_NAME, BRAND } from './config.js';
 export const CLEAR_GROUPS = [
   { k: 'clock', label: 'Clock-ins and time sheets', colls: ['punch'] },
   { k: 'payroll', label: 'Payroll', sub: 'Pay runs, paystubs, early pay, tip shares, tip pool and sales uploads', colls: ['payrun', 'paystub', 'advance', 'tipshare', 'tippool', 'possales', 'payperiod'] },
-  { k: 'pos', label: 'Point of sale', sub: "Checks, kitchen and bar tickets, today's sales", colls: ['check', 'ticket'] },
+  { k: 'pos', label: 'Point of sale', sub: "Checks, kitchen and bar tickets, today's sales", colls: ['check', 'ticket', 'pickup'] },
   { k: 'posts', label: 'Messages and problem reports', colls: ['post'] },
   { k: 'swaps', label: 'Swap requests', colls: ['swap'] },
   { k: 'events', label: 'Events (BEOs)', colls: ['event'] },

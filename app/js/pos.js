@@ -29,7 +29,7 @@ export const PAYMENT_SERVICES = [
   { id: 'clover', name: 'Clover', how: 'terminal', device: 'Clover Flex', note: 'Payments on a Clover Flex or Mini through Clover\'s REST Pay Display. Money lands in your Clover account.' },
   { id: 'toast', name: 'Toast', how: 'handoff', device: 'Toast handheld', note: 'The order is sent into Toast; staff take the card on Toast\'s own handheld, then mark the check paid here.' },
 ];
-const POS_DEFAULTS = { payment: 'practice', device: 'Counter 1', tax: 0.08, eightySix: {}, seq: 100 };
+const POS_DEFAULTS = { payment: 'practice', device: 'Counter 1', tax: 0.08, eightySix: {}, seq: 100, pickupDelay: 2 };
 async function posSettings() { const s = await data.settings(); return { ...POS_DEFAULTS, ...(s.pos || {}) }; }
 async function savePos(patch) { const s = await data.settings(); await data.saveSettings({ ...s, pos: { ...(s.pos || {}), ...patch } }); }
 const payService = (P) => PAYMENT_SERVICES.find((p) => p.id === P.payment) || PAYMENT_SERVICES[0];
@@ -457,7 +457,7 @@ async function send(c) {
   const unsent = cur.items.filter((x) => !x.sent && !x.voided);
   for (const st of ['Kitchen', 'Bar']) {
     const its = unsent.filter((x) => x.station === st);
-    if (its.length) await data.put('ticket', { checkId: cur.id, checkName: cur.name, server: cur.serverName || '', station: st, at: Date.now(), items: its.map((x) => ({ name: x.name, qty: x.qty || 1, mods: x.mods || [], note: x.note || '', seat: x.seat, done: false })) });
+    if (its.length) await data.put('ticket', { checkId: cur.id, checkName: cur.name, server: cur.serverName || '', serverId: cur.server || '', station: st, at: Date.now(), items: its.map((x) => ({ name: x.name, qty: x.qty || 1, mods: x.mods || [], note: x.note || '', seat: x.seat, done: false })) });
   }
   await data.put('check', { ...cur, items: cur.items.map((x) => (unsent.includes(x) ? { ...x, sent: true } : x)) });
 }
@@ -576,6 +576,69 @@ function cashSheet(part) {
   });
 }
 
+// ------------------------------------------------------------ order-up alerts (RRA-124)
+// Bumping a ticket on the kitchen or bar screen sends "Pick up Table #" to the
+// server who took the order. If nobody taps Picked up within the Admin's delay
+// (POS settings, 2 minutes to start), it goes to every server on the clock,
+// with a red border. Each phone shows its alerts at the top of the screen and a
+// count on Orders (POS).
+const PICKUP_MAX = 2 * 3600e3; // older alerts are dropped
+let pickupSeen = new Set();
+async function onTheClock() {
+  const me = myStaff();
+  if (!me) return isHost(); // the Admin without a staff card still sees them
+  return (await data.list('punch')).some((p) => p.staffId === me.id && !p.out);
+}
+export async function myPickups() {
+  if (!session.profile || !canOrder()) return [];
+  const P = await posSettings(), delay = (P.pickupDelay || 2) * 60e3, now = Date.now();
+  const open = (await data.list('pickup')).filter((p) => !p.picked && now - p.at < PICKUP_MAX).sort((a, b) => a.at - b.at);
+  if (!open.length) return [];
+  const clocked = await onTheClock();
+  return open.filter((p) => isMine(p) || (now - p.at >= delay && clocked)).map((p) => ({ ...p, late: now - p.at >= delay }));
+}
+// The Admin's checks may carry 'admin' from before they had a staff card.
+const isMine = (p) => p.serverId === meId() || (isHost() && p.serverId === 'admin');
+function chime() {
+  try {
+    navigator.vibrate?.([120, 60, 120]);
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const g = ctx.createGain(); g.gain.value = 0.18; g.connect(ctx.destination);
+    [880, 1175].forEach((f, i) => { const o = ctx.createOscillator(); o.frequency.value = f; o.connect(g); o.start(ctx.currentTime + i * 0.18); o.stop(ctx.currentTime + i * 0.18 + 0.16); });
+    setTimeout(() => ctx.close(), 800);
+  } catch {}
+}
+export async function showPickups() {
+  const list = await myPickups();
+  for (const b of $$('.pos-badge')) { b.hidden = !list.length; b.textContent = list.length; }
+  let box = $('#pickups');
+  if (!list.length) { if (box) box.remove(); return; }
+  if (!box) { box = document.createElement('div'); box.id = 'pickups'; box.className = 'pickups'; box.setAttribute('role', 'status'); document.body.append(box); }
+  const fresh = list.filter((p) => !pickupSeen.has(p.id + (p.late ? 'L' : '')));
+  if (fresh.length) {
+    chime();
+    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+      navigator.serviceWorker?.ready.then((r) => r.showNotification('Pick up ' + fresh[0].checkName, { body: `${fresh[0].station} order is up`, tag: 'pickup-' + fresh[0].id, icon: BRAND.icon192 })).catch(() => {});
+    }
+  }
+  list.forEach((p) => pickupSeen.add(p.id + (p.late ? 'L' : '')));
+  box.innerHTML = list.slice(0, 4).map((p) => `<div class="pickup${p.late ? ' late' : ''}">
+      <span class="pk-i" aria-hidden="true">🔔</span>
+      <span class="grow"><b>Pick up ${esc(p.checkName)}</b><small>${esc(p.station)} · ${mins(p.at)} min${p.late && !isMine(p) ? ` · ${esc((p.serverName || 'server').split(' ')[0])}'s table` : ''}</small></span>
+      <button type="button" class="btn small" data-picked="${p.id}">Picked up</button></div>`).join('') + (list.length > 4 ? `<div class="pickup more">+${list.length - 4} more</div>` : '');
+  $$('[data-picked]', box).forEach((b) => b.onclick = async () => {
+    const p = await data.get('pickup', b.dataset.picked);
+    if (p && !p.picked) await data.put('pickup', { ...p, picked: Date.now(), pickedBy: meName() });
+    showPickups();
+  });
+}
+export function startPickups() {
+  if (startPickups.on) return; startPickups.on = true;
+  data.onChange((coll) => { if (coll === 'pickup' || coll === 'punch' || coll === 'settings') showPickups(); });
+  setInterval(showPickups, 15000);
+  showPickups();
+}
+
 // ------------------------------------------------------------ kitchen and bar screen
 export async function ticketsView() {
   setChrome({ tab: 'more', back: true });
@@ -596,7 +659,15 @@ export async function ticketsView() {
     <p class="muted small center">Tap an item when it's up. Bump clears the ticket. Tickets turn orange at 8 minutes and red at 15.</p>`;
   $$('[data-st]').forEach((b) => b.onclick = () => { LS.set('posStation', b.dataset.st); ticketsView(); });
   $$('[data-t]').forEach((b) => b.onclick = async () => { const t = await data.get('ticket', b.dataset.t); t.items[+b.dataset.i].done = !t.items[+b.dataset.i].done; await data.put('ticket', t); ticketsView(); });
-  $$('[data-bump]').forEach((b) => b.onclick = async () => { const t = await data.get('ticket', b.dataset.bump); await data.put('ticket', { ...t, bumped: Date.now() }); toast('Bumped · ' + t.checkName); ticketsView(); });
+  $$('[data-bump]').forEach((b) => b.onclick = async () => {
+    const t = await data.get('ticket', b.dataset.bump);
+    await data.put('ticket', { ...t, bumped: Date.now() });
+    // RRA-124: tell the server the order is up.
+    let serverId = t.serverId;
+    if (!serverId) serverId = (await data.get('check', t.checkId))?.server || '';
+    await data.put('pickup', { ticketId: t.id, checkId: t.checkId, checkName: t.checkName, station: t.station, serverId, serverName: t.server || '', at: Date.now(), picked: null });
+    toast('Bumped · ' + t.checkName + ' · server alerted'); ticketsView();
+  });
   $('#e86')?.addEventListener('click', eightySix);
   clearInterval(ticketsView.tick);
   ticketsView.tick = setInterval(() => { if (location.hash.startsWith('#/tickets') && !$('#dlg').open) ticketsView(); else clearInterval(ticketsView.tick); }, 60000);
@@ -661,10 +732,18 @@ export async function posSettingsView() {
     <div class="group">${PAYMENT_SERVICES.map((x) => `<button class="row" type="button" data-pv="${x.id}"><span class="grow"><span class="title">${esc(x.name)}</span><span class="sub" style="white-space:normal">${esc(x.note)}</span></span>${x.id === svc.id ? '<b style="color:var(--accent)">✓</b>' : ''}</button>`).join('')}</div>
     <div class="group">
       ${svc.how === 'terminal' ? `<div class="row"><span class="grow"><span class="title">Card reader name</span><span class="sub">The ${esc(svc.device || 'reader')} payments go to</span></span><span class="meta">${esc(P.device)}</span><button class="btn plain small" id="dev" type="button">Change</button></div>` : ''}
+      <div class="row"><span class="grow"><span class="title">Order-up alert</span><span class="sub" style="white-space:normal">When a ticket is bumped, its server gets "Pick up". If nobody picks it up in this time, every server on the clock gets it in red.</span></span><span class="meta">${P.pickupDelay || 2} min</span><button class="btn plain small" id="pkd" type="button">Change</button></div>
       <div class="row"><span class="grow"><span class="title">Sales tax</span><span class="sub">Check the rate for your address</span></span><span class="meta">${(P.tax * 100).toFixed(2)}%</span><button class="btn plain small" id="tax" type="button">Change</button></div>
     </div>
     <p class="muted small">Nothing is connected yet, so card payments are practice runs. Going live needs the restaurant's server for the payment keys and a developer account with ${esc(svc.id === 'practice' ? 'the payment company' : svc.name)}.</p>`;
   $$('[data-pv]').forEach((b) => b.onclick = async () => { await savePos({ payment: b.dataset.pv }); toast('Card payments: ' + PAYMENT_SERVICES.find((p) => p.id === b.dataset.pv).name); posSettingsView(); });
   $('#dev')?.addEventListener('click', async () => { const v = await sheet({ title: 'Card reader name', right: 'Save', body: `<label class="field"><span>Name</span><input type="text" id="dv" value="${esc(P.device)}"></label>`, onMount: (api) => { api.onRight = () => api.close($('#dv', api.el).value.trim()); } }); if (v) { await savePos({ device: v }); posSettingsView(); } });
+  $('#pkd').onclick = async () => {
+    let v = P.pickupDelay || 2;
+    const ok = await sheet({ title: 'Order-up alert', right: 'Save',
+      body: `<p class="muted small" style="margin-top:0">Minutes before an order nobody picked up goes to every server on the clock:</p>${numPick('pk', 10, v)}`,
+      onMount: (api) => wirePick(api.el, 'pk', (n) => { v = n; }) });
+    if (ok) { await savePos({ pickupDelay: v }); toast(`Order-up alert: ${v} min`); posSettingsView(); }
+  };
   $('#tax').onclick = async () => { const v = await sheet({ title: 'Sales tax', right: 'Save', body: `<label class="field"><span>Percent</span><input type="text" inputmode="decimal" id="tx" value="${(P.tax * 100).toFixed(2)}"></label><p class="muted small">New checks use the new rate; open checks keep theirs.</p>`, onMount: (api) => { api.onRight = () => api.close(parseFloat($('#tx', api.el).value)); } }); if (v >= 0 && v < 20) { await savePos({ tax: v / 100 }); posSettingsView(); } };
 }
