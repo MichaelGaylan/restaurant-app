@@ -58,6 +58,7 @@ export async function settingsView() {
       <div class="row"><span class="grow">Food cost target</span><span class="meta">${s.foodCostTarget || 30}%</span>${edit ? '<button class="btn plain small" id="target" type="button">Change</button>' : ''}</div>
       <div class="row"><span class="grow">Shared team data</span><span class="meta">${esc(syncLabel())}</span></div>
       ${edit ? '<a class="row" href="#/dedupe"><span class="grow">Clean up duplicates</span></a>' : ''}
+      ${isHost() ? '<a class="row nav" href="#/cleardata"><span class="grow"><span class="title">Clear test data</span><span class="sub">Erase practice clock-ins, checks, messages and more for the whole team</span></span></a>' : ''}
       <div class="row"><span class="grow">Lock after no use</span><span class="meta">${INACTIVITY_DAYS} days</span></div>
       <a class="row" href="#/about"><span class="grow">About</span></a>
       <a class="row" href="#/report"><span class="grow">Report a problem</span></a>

@@ -20,7 +20,7 @@ import { isPrivate, recipientKeys } from './audience.js';
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const COLLS = ['recipe', 'stock', 'vendor', 'staff', 'prepitem', 'prepday', 'post', 'week', 'swap', 'event', 'waste', 'punch', 'payrate', 'prepsaved', 'settings',
   'payrun', 'paystub', 'advance', 'tipshare', 'possales', 'tippool', 'payperiod', // payroll (RRA-095)
-  'check', 'ticket']; // point of sale (RRA-101)
+  'check', 'ticket', 'pickup']; // point of sale (RRA-101, RRA-124)
 const te = new TextEncoder();
 const td = new TextDecoder();
 
@@ -253,4 +253,11 @@ export async function start(profile, onStatus = () => {}) {
   } catch (e) {
     set('error', e.message || String(e));
   }
+}
+
+// RRA-106: every id the team's shared data holds for a collection, including
+// records sealed to other phones that this phone can't open.
+export function remoteIds(coll) {
+  if (!lastSnap) return [];
+  return lastSnap.docs.map((d) => d.data()).filter((r) => r.c === coll && !r.d).map((r) => r.i);
 }

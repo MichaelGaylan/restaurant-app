@@ -34,7 +34,10 @@ async function render() {
   setTitle(editing ? 'Edit prep list' : "Today's prep", change ? `<button class="btn plain small" id="edit" type="button">${editing ? 'Done' : 'Edit'}</button>` : '');
   const byStation = {};
   for (const it of items) (byStation[it.station || 'Other'] ||= []).push(it);
-  const order = [...stations, ...Object.keys(byStation).filter((s) => !stations.includes(s))];
+  // RRA-110: only tabs with work left show. A tab whose last task is done
+  // goes away (Edit still shows every tab).
+  const left = (s) => byStation[s].some((i) => !done.done[i.id]);
+  const order = [...stations, ...Object.keys(byStation).filter((s) => !stations.includes(s))].filter((s) => byStation[s] && (editing || left(s)));
   const total = items.length;
   const finished = items.filter((i) => done.done[i.id]).length;
   let saved = (await data.list('prepsaved')).sort(data.byName);
@@ -47,7 +50,7 @@ async function render() {
   const savedOpen = LS.get('prepSavedOpen', false) || !items.length;
   view.innerHTML = `
     <p class="muted small">${new Date().toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}${total ? ` · ${finished} of ${total} done` : ''}</p>
-    ${order.filter((s) => byStation[s]).map((s) => { const n = byStation[s].length, dn = byStation[s].filter((i) => done.done[i.id]).length, o = LS.get('prepOpen', null) === s; return `
+    ${order.map((s) => { const n = byStation[s].length, dn = byStation[s].filter((i) => done.done[i.id]).length, o = LS.get('prepOpen', null) === s; return `
       <button class="acc-head${o ? ' open' : ''}" type="button" data-g="${esc(s)}"><span class="grow">${esc(s)}</span><span class="meta">${dn === n ? chip('All done', 'green') : `${dn} of ${n} done`}</span></button>
       <div class="group acc-body"${o ? '' : ' hidden'}>${byStation[s].map((i) => {
         const d = done.done[i.id];
@@ -89,9 +92,24 @@ async function render() {
         const id = row.dataset.id;
         if (done.done[id]) delete done.done[id]; else done.done[id] = { by: session.profile.name, at: Date.now() };
         await data.put('prepday', done);
+        // RRA-110: the last task in a tab is done. The tab goes away; its items
+        // stay in Saved items, so refilling is one tap each.
+        const st = items.find((i) => i.id === id)?.station || 'Other';
+        const inTab = items.filter((i) => (i.station || 'Other') === st);
+        const allDone = items.length && items.every((i) => done.done[i.id]);
+        if (done.done[id] && !allDone && inTab.every((i) => done.done[i.id])) {
+          const cleared = inTab.map((i) => ({ ...i })), marks = {};
+          for (const i of cleared) { marks[i.id] = done.done[i.id]; await remember(i); await data.remove('prepitem', i.id); delete done.done[i.id]; }
+          await data.put('prepday', done);
+          if (LS.get('prepOpen', null) === st) LS.set('prepOpen', order.find((x) => x !== st && left(x)) || null); // open the next tab with work
+          toast(`${st} prep done. That tab is cleared.`, {
+            label: 'Undo',
+            run: async () => { for (const i of cleared) await data.put('prepitem', i); const d = (await data.get('prepday', day)) || { id: day, done: {} }; Object.assign(d.done, marks); await data.put('prepday', d); render(); },
+          }, 4000);
+        }
         // Everything done: the list clears itself for the next shift. Items
         // stay in Saved items, so refilling is one tap each.
-        if (items.length && items.every((i) => done.done[i.id])) {
+        if (allDone) {
           const cleared = items.map((i) => ({ ...i }));
           for (const i of cleared) { await remember(i); await data.remove('prepitem', i.id); }
           done.done = {}; done.clearedAt = Date.now(); done.clearedBy = session.profile.name;

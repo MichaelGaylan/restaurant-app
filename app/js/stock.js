@@ -38,11 +38,15 @@ export async function stockView(forceEdit) {
   const vs = await vendors();
   const q = (stockView.q || '').toLowerCase();
   // Tabs for food and each kind of supply (RRA-058). A search looks through all of them.
-  const cat = LS.get('stockCat', 'all');
-  const inCat = (s, c) => c === 'all' || (c === 'food' ? isFood(s.group) : s.group === c);
+  // RRA-115: one tab per group, no All; it opens on the first group.
+  let cat = LS.get('stockCat', STOCK_TABS[0][0]);
+  if (!STOCK_TABS.some(([k]) => k === cat)) cat = STOCK_TABS[0][0];
+  const inCat = (s, c) => (c === 'food' ? isFood(s.group) : s.group === c);
   const shown = list.filter((s) => (q ? `${s.name} ${s.group} ${s.vendor}`.toLowerCase().includes(q) : inCat(s, cat)));
   const groups = {};
   for (const s of shown) (groups[s.group || 'Other'] ||= []).push(s);
+  // The first section starts open; opening another closes it (one at a time).
+  if (stockView.open === undefined || (stockView.open && !groups[stockView.open])) stockView.open = Object.keys(groups)[0] ?? null;
   const last = list.reduce((m, s) => (s.countedAt > (m?.countedAt || 0) ? s : m), null);
   const wide = isWide();
   const costs = canSee('costs');
@@ -88,7 +92,7 @@ export async function stockView(forceEdit) {
     <p class="muted small center">${editing ? 'Tap an item to change its par, unit or vendor. Tap the red button to remove one you no longer stock.'
       : last?.countedAt ? `Last counted by ${esc(last.countedBy)}, ${fmtDate(last.countedAt)}` : 'Not counted yet.'}</p>`;
   wireTabs();
-  $$('[data-cat]', view).forEach((b) => { b.onclick = () => { LS.set('stockCat', b.dataset.cat); stockView.q = ''; stockView(); }; });
+  $$('[data-cat]', view).forEach((b) => { b.onclick = () => { LS.set('stockCat', b.dataset.cat); stockView.q = ''; stockView.open = undefined; stockView(); }; });
   // One section open at a time (RRA-041); a search opens every match.
   oneOpen(view, (g) => { stockView.open = g; });
   const showDirty = () => { const n = Object.keys(dirty).length; const el = $('#save-n'); if (el) el.textContent = n ? ` (${n})` : ''; };

@@ -10,7 +10,7 @@ No build step: plain HTML, CSS and JavaScript modules, served as static files wi
   - `js/head.js`, `js/shell.js`: the page head and body every restaurant shares
   - `sw-core.js`: shared offline support (bump `APP_BUILD` with every release)
   - `firestore.rules`: shared-data rules, one folder per restaurant (`teams/<id>`)
-- `r/<id>/`: one restaurant. It holds only `index.html` (name and icons for iPhone), `brand.js` (names, pictures, color, data space and keys), `sw.js`, `manifest.webmanifest`, `assets/` and `data/` (notices, revoked invites).
+- `r/<id>/`: one restaurant. It holds only `index.html` (name and icons for iPhone), `brand.js` (names, pictures, color, data space and keys; optional `menu`, `menuPhotoDir`/`menuPhotos` for dish pictures in `assets/menu/`, `posChoices`, `posTrim`, `giftCards`, `radio`), `sw.js`, `manifest.webmanifest`, `assets/` and `data/` (notices, revoked invites).
   - `r/harbor/`: a demo restaurant made with the wizard
   - `r/preview/`: what the wizard's iPhone preview shows
 - `setup/`: the Restaurant Setup wizard

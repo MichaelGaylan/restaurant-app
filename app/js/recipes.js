@@ -6,6 +6,7 @@ import { $, $$, esc, view, LS, sheet, toast, setTitle, setChrome, fmtDate, sessi
 import { canChange, canSee } from './perms.js';
 import { printButtons, wirePrint } from './pdf.js';
 import { loungeButton } from './lounge.js';
+import { dishPhoto } from './menu.js';
 
 const CATEGORIES = ['Rub', 'Sauce', 'Dressing', 'Marinade', 'Other'];
 const all = async () => (await data.list('recipe')).sort(data.byName);
@@ -59,7 +60,7 @@ export async function recipesView() {
     ${keys.length && isWide() ? wideTable() : keys.length ? keys.map((g) => `
       <button class="acc-head${q || openKey === g ? ' open' : ''}" type="button" data-g="${esc(g)}"><span class="grow">${esc(g)}</span><span class="meta">${groups[g].length}</span></button>
       <div class="group acc-body"${q || openKey === g ? '' : ' hidden'}>${groups[g].map((r) => `
-        <a class="row" href="#/recipe/${r.id}">${r.photo ? `<img src="${r.photo}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none">` : ''}
+        <a class="row" href="#/recipe/${r.id}">${dishPhoto(r) ? `<img src="${esc(dishPhoto(r))}" loading="lazy" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none">` : ''}
         <span class="grow"><span class="title">${esc(r.name)}${r.kind === 'house' ? ` ${chip('Sub recipe', 'purple')}` : ''}</span><span class="sub">${esc(subline(r, list))}</span></span>${r.kind === 'dish' && r.price ? `<span class="meta">${data.money(r.price)}</span>` : ''}</a>`).join('')}${edit && kind === 'dish' ? `<button class="row nav add-to" type="button" data-addto="${esc(g)}"><span class="grow" style="color:var(--accent)">+ Add to ${esc(g)}</span></button>` : ''}</div>`).join('')
     : `<div class="empty">${q ? 'Nothing matches that search.' : kind === 'dish'
       ? `No dishes yet.${edit ? '<br>Tap <b>UPLOAD</b> to add the first one.' : ''}`
@@ -104,7 +105,7 @@ export async function recipeView(id) {
   const showCost = canSee('costs') && cost !== null;
   view.innerHTML = `
     <div class="recipe">
-      ${r.photo ? `<img src="${r.photo}" alt="" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--radius);margin-bottom:8px">` : ''}
+      ${dishPhoto(r) ? `<img src="${esc(dishPhoto(r))}" alt="" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--radius);margin-bottom:8px">` : ''}
       <p><span class="chip">${r.kind === 'house' ? esc(r.category || 'House recipe') : esc(r.section || 'Dish')}</span>${r.kind === 'house' ? ` ${chip('Sub recipe', 'purple')}` : ''}</p>
       ${r.kind === 'house' && (r.yield || r.storage) ? `<div class="facts">
         <div><b>Yield</b>${esc(r.yield || '—')}</div><div><b>Storage</b>${esc(r.storage || '—')}</div></div>` : ''}
