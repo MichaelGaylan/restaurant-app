@@ -3,6 +3,7 @@
 // overtime (same split as Time sheets), tip pool shares and pay ESTIMATES.
 // Real taxes come from the payroll service once one is connected.
 
+import { discounts } from './coupons-core.js';
 import * as data from './data.js';
 import { payRules, splitHours } from './lounge.js';
 import { session } from './ui.js';
@@ -71,7 +72,8 @@ export async function load(per) {
     const d = c.closedDate || dateOf(c.closed);
     if (!inPer(d)) continue;
     posTips[d] = (posTips[d] || 0) + (c.payments || []).reduce((t, p) => t + (+p.tip || 0), 0);
-    posSales[d] = (posSales[d] || 0) + (c.items || []).reduce((t, x) => t + (x.voided ? 0 : (+x.price || 0) * (x.qty || 1)), 0);
+    posSales[d] = (posSales[d] || 0) + (c.items || []).reduce((t, x) => t + (x.voided ? 0 : (+x.price || 0) * (x.qty || 1)), 0)
+      - ((c.coupons || []).length ? discounts(c).total : 0); // RRA-122: coupons come off net sales
   }
   for (const [d, v] of Object.entries(posTips)) if (!(d in pool) && v > 0) pool[d] = Math.round(v * 100) / 100;
   for (const [d, v] of Object.entries(posSales)) if (!(d in sold)) sold[d] = v;

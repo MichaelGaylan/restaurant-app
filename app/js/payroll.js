@@ -1,4 +1,4 @@
-// Payroll (RRA-095): merged from the stand-alone Bootleggers Payroll app
+// Payroll (RRA-095): merged from the stand-alone Payroll test app
 // (BPAY-001…024). Hours come from the Lounge clock and Time sheets, rates from
 // Time sheets, overtime from Settings → Pay rules, people from Staff.
 // Flow: Review hours (fix in place) → Review pay → Submit.

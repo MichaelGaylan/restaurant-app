@@ -3,7 +3,7 @@
 // Bump APP_BUILD with every release of the shared app (it follows js/config.js);
 // phones notice the change and update. A restaurant's own brandVersion does the
 // same when its name or pictures change.
-const APP_BUILD = '0.8.1-2026.11.24-2';
+const APP_BUILD = '0.8.4-2026.11.24-3';
 const B = self.BRAND;
 const CACHE = `${B.teamId}-${APP_BUILD}-${B.brandVersion || 1}`;
 const APP = [
@@ -12,6 +12,7 @@ const APP = [
   'js/ui.js', 'js/data.js', 'js/perms.js', 'js/recipes.js', 'js/stock.js', 'js/board.js', 'js/prep.js',
   'js/schedule.js', 'js/events.js', 'js/costs.js', 'js/settings.js', 'js/sync.js', 'js/audience.js', 'js/dedupe.js', 'js/reports.js',
   'js/payroll.js', 'js/paycalc.js', 'js/provider.js', 'js/pos.js', 'js/giftcards.js', 'js/music.js', 'js/cleardata.js',
+  'js/coupons.js', 'js/coupons-core.js', 'vendor/zxing/zxing.min.js', // coupons (RRA-122)
 ].map((f) => '../../app/' + f);
 const SHELL = [
   './', 'index.html', 'brand.js', 'manifest.webmanifest',
