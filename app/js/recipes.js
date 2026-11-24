@@ -221,7 +221,7 @@ export async function recipeDialog(existing, kind = 'house', section = null) {
   const saved = await sheet({
     title: existing ? 'Edit recipe' : r.kind === 'dish' ? 'New dish' : 'New recipe', right: 'Save',
     body: `
-      <label class="field"><span>Name</span><input type="text" id="r-name" value="${esc(r.name || '')}" placeholder="${r.kind === 'dish' ? 'e.g. Classic cheeseburger' : 'e.g. Honey Sriracha wing sauce'}" autocomplete="off"></label>
+      <label class="field"><span>Name</span><input type="text" id="r-name" value="${esc(r.name || '')}" placeholder="${r.kind === 'dish' ? ('e.g. ' + (globalThis.BRAND.dishExample || 'Classic Burger')) : 'e.g. Honey Sriracha wing sauce'}" autocomplete="off"></label>
       <div class="segmented" id="r-kind">
         <button type="button" data-k="dish">Dish</button><button type="button" data-k="house">House recipe</button>
       </div>

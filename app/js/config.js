@@ -5,10 +5,36 @@
 // brand.js (r/<id>/brand.js), loaded before the app.
 export const BRAND = globalThis.BRAND;
 export const APP_NAME = BRAND.appName;
-export const VERSION = '0.8.1';
-export const BUILD = '2026.11.24-2';
+export const VERSION = '0.8.4';
+export const BUILD = '2026.11.24-3';
 
-export const WHATS_NEW = [
+// Text that names the restaurant uses tokens, so it reads right after a
+// changeout (RRA-123): {name} = short name, {restaurant} = full name,
+// {app} = app name.
+export const brandText = (s) => String(s ?? '')
+  .replace(/\{name\}/g, BRAND.shortName).replace(/\{restaurant\}/g, BRAND.restaurant).replace(/\{app\}/g, BRAND.appName);
+
+const WHATS_NEW_RAW = [
+  {
+    version: '0.8.4', build: '2026.11.24-3', date: '2026-11-24',
+    lines: [
+      'Seating areas can be sized to fit the room: in Seating layout, tap Size and pick how many squares wide and deep the area is (a small nook can be 2 by 1). Tap an empty square to add a table, tap one to remove it.',
+    ],
+  },
+  {
+    version: '0.8.3', build: '2026.11.24-3', date: '2026-11-24',
+    lines: [
+      'Coupons (More → Coupons, managers and the Admin): make a coupon for percent off, dollars off, a free dish, or buy one get one, with dates, days, hours, a minimum, food only, a use limit and one-time codes. Send it as a framed {name} coupon picture with a QR code or barcode and the offer printed under it.',
+      'At the table, tap Add a coupon on the check and scan the coupon with the camera (works on iPhone) or type the code. The app checks the rules, takes the discount off before tax, and shows coupons in Today\'s sales. Net sales in Payroll count the discount.',
+      'Military / veteran discount (also first responder and senior): set it up once under More → Coupons. On a check, tap Discounts, pick it, and confirm you saw the guest\'s ID. It works every visit with no coupon, and Today\'s sales shows these discounts on their own line. Its QR card can also be printed for regulars.',
+    ],
+  },
+  {
+    version: '0.8.2', build: '2026.11.24-3', date: '2026-11-24',
+    lines: [
+      'Behind the scenes: everything that belongs to this restaurant (names, pictures, menu, starter stock, vendors, shared data settings) now lives in one place, so the app can be set up for another restaurant with nothing of {name} left in it. Nothing changes on your screen.',
+    ],
+  },
   {
     version: '0.8.1', build: '2026.11.24-2', date: '2026-11-24',
     lines: [
@@ -45,6 +71,7 @@ export const WHATS_NEW = [
     ],
   },
 ];
+export const WHATS_NEW = WHATS_NEW_RAW.map((w) => ({ ...w, lines: w.lines.map(brandText) }));
 
 // Public keys (base64url, raw P-256) of the Admin device(s): the app's administrator. Only invites that
 // trace back to one of these keys can open the app. Empty = the app offers

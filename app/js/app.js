@@ -2,7 +2,7 @@
 
 import {
   BRAND, APP_NAME, VERSION, BUILD, WHATS_NEW, ROOT_KEYS, INACTIVITY_DAYS, INVITE_HOURS,
-  WEB3FORMS_KEY, REPORT_PREFIX, NOTIFICATIONS_URL,
+  WEB3FORMS_KEY, REPORT_PREFIX, NOTIFICATIONS_URL, brandText,
 } from './config.js';
 import * as access from './access.js';
 import * as store from './store.js';
@@ -23,6 +23,7 @@ import { settingsView, listView, rolesView, personView, dedupeView } from './set
 import { applyMenu, applyVendors, applySupplies } from './menu.js';
 import { payrollView, payRunView, payRunDoneView, payHistoryView, myPayView, tipRulesView, paySettingsView } from './payroll.js';
 import { payrollSettings, hasPayroll } from './paycalc.js';
+import { couponsView, couponView } from './coupons.js';
 import { posView, posCheckView, posPayView, ticketsView, posSalesView, posSettingsView, canOrder, canKitchen, canSales, posMenu, seatingView, startPickups, showPickups } from './pos.js';
 import { giftCardsView } from './giftcards.js';
 import { musicView } from './music.js';
@@ -139,6 +140,8 @@ async function loadNotices() {
     const r = await fetch(NOTIFICATIONS_URL, { cache: 'no-store' });
     if (r.ok) { notices = (await r.json()).messages || []; LS.set('noticesCache', notices); }
   } catch { notices = LS.get('noticesCache', []); }
+  // RRA-123: {name} and friends in a notice become this restaurant's names.
+  notices = notices.map((n) => ({ ...n, title: brandText(n.title), body: brandText(n.body), from: brandText(n.from) }));
   // RRA-089: notices someone removed stay hidden on their phone.
   const hidden = new Set(LS.get('hiddenNotices', []));
   session.notices = notices.filter((x) => !hidden.has(x.id));
@@ -206,6 +209,7 @@ function renderSide() {
     renderSide.pay ? link('payroll', 'Payroll') : '',
     canOrder() ? link('pos', 'Orders (POS)', '<i class="sbadge pos-badge" hidden></i>').replace('<a ', '<a data-pospop ') : '',
     canKitchen() ? link('tickets', '<span class="sub-l">Kitchen and bar screen</span>') : '',
+    canSee('coupons') ? link('coupons', 'Coupons') : '',
     BRAND.giftCards?.url ? link('giftcards', 'Gift cards') : '',
     link('music', 'Music'),
     canSee('events') ? link('events', 'Events (BEOs)', '<i id="ev-badge" class="sbadge" hidden></i>') : '',
@@ -239,6 +243,7 @@ function moreView() {
       ${canOrder() ? '<a class="row" href="#/pos" data-pospop><span class="grow">Orders (POS)</span><i class="sbadge pos-badge" hidden></i></a>' : ''}
       ${canKitchen() ? '<a class="row" href="#/tickets"><span class="grow">Kitchen and bar screen</span></a>' : ''}
       ${canSales() ? '<a class="row" href="#/possales"><span class="grow">Today\'s sales</span></a>' : ''}
+      ${canSee('coupons') ? '<a class="row" href="#/coupons"><span class="grow">Coupons</span></a>' : ''}
       ${BRAND.giftCards?.url ? '<a class="row" href="#/giftcards"><span class="grow">Gift cards</span></a>' : ''}
       <a class="row" href="#/music"><span class="grow">Music</span></a>
       ${moreView.pay ? '<a class="row" href="#/payroll"><span class="grow">Payroll</span></a>' : ''}
@@ -374,6 +379,7 @@ function aboutView() {
       <p><b>Prep:</b> today's prep list by station. Tap an item when it's done.</p>
       <p><b>Stock:</b> count with + and −, then Save count. Needed shows what's below par, and Order guides splits it by vendor.</p>
       <p><b>Board:</b> messages for everyone, the kitchen or managers, plus notices from management. A red dot means something new.</p>
+      <p><b>Coupons:</b> managers make a coupon under More → Coupons and send it as a picture (QR code or barcode, with the offer printed under it) to text, email, print or post. At the table, tap <b>Add a coupon</b> on the check and scan it with the camera, or type the code. The discount comes off before tax. Military / veteran, first responder and senior discounts need no coupon: tap <b>Discounts</b> on the check and confirm you saw the guest's ID.</p>
       <p><b>More:</b> schedule, events, costs and waste, Settings, and this page.</p>
       <p><b>Access:</b> the app opens only on the phone a manager approved. It locks itself after ${INACTIVITY_DAYS} days without use.</p>
       <p><b>Install it:</b> on iPhone, tap Share, then Add to Home Screen. On Android, tap the menu, then Install app.</p>
@@ -746,6 +752,8 @@ const routes = {
   posset: () => posSettingsView(),
   seating: () => seatingView(), // RRA-114
   giftcards: () => giftCardsView(), // RRA-111
+  coupons: () => couponsView(), // RRA-122
+  coupon: (id) => couponView(id),
   music: () => musicView(), // RRA-109
   cleardata: () => clearDataView(), // RRA-106
   notices: () => boardView(),
