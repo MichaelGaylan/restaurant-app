@@ -10,12 +10,14 @@
 // payments are practice runs and nothing is charged.
 
 import * as data from './data.js';
-import { $, $$, esc, view, sheet, toast, setTitle, setChrome, session, LS } from './ui.js';
-import { canSee, canChange, isHost, myStaff } from './perms.js';
+import { $, $$, esc, view, dlg, sheet, toast, setTitle, setChrome, session, LS, isWide } from './ui.js';
+import { canSee, canChange, isHost, myStaff, jobAllows, jobAreas } from './perms.js';
 import { BRAND } from './config.js';
 import { dishPhoto } from './menu.js';
 import { discounts, headline, tagOf } from './coupons-core.js';
 import { couponSheet, discountsSheet } from './coupons.js';
+import { ackSeated, ack86 } from './alerts.js';
+import { drinkKind, isAlcohol, stationOf, priceNow, happyNow, hhLabel, HH_DEFAULT, stockUse, legalAge } from './drinks.js';
 
 const money = (n) => (n < 0 ? '−' : '') + '$' + Math.abs(+n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -31,27 +33,37 @@ export const PAYMENT_SERVICES = [
   { id: 'clover', name: 'Clover', how: 'terminal', device: 'Clover Flex', note: 'Payments on a Clover Flex or Mini through Clover\'s REST Pay Display. Money lands in your Clover account.' },
   { id: 'toast', name: 'Toast', how: 'handoff', device: 'Toast handheld', note: 'The order is sent into Toast; staff take the card on Toast\'s own handheld, then mark the check paid here.' },
 ];
-const POS_DEFAULTS = { payment: 'practice', device: 'Counter 1', tax: 0.08, eightySix: {}, seq: 100, pickupDelay: 2 };
-async function posSettings() { const s = await data.settings(); return { ...POS_DEFAULTS, ...(s.pos || {}) }; }
+const POS_DEFAULTS = { payment: 'practice', device: 'Counter 1', tax: 0.08, eightySix: {}, seq: 100, pickupDelay: 2, checkLate: 90 };
+export async function posSettings() { const s = await data.settings(); return { ...POS_DEFAULTS, ...(s.pos || {}) }; }
 async function savePos(patch) { const s = await data.settings(); await data.saveSettings({ ...s, pos: { ...(s.pos || {}), ...patch } }); }
 const payService = (P) => PAYMENT_SERVICES.find((p) => p.id === P.payment) || PAYMENT_SERVICES[0];
 
 // ---------- who can do what (roles from perms.js, job from the Staff position) ----------
 const role = () => session.profile?.role;
-const job = () => { const p = myStaff()?.position || ''; return /bar/i.test(p) ? 'bar' : /server|host|bus|wait|front|cashier/i.test(p) ? 'front' : 'kitchen'; };
 const boss = () => isHost() || role() === 'manager';
-export const canOrder = () => boss() || (canChange('pos') && role() === 'staff' && job() !== 'kitchen');
-export const canKitchen = () => boss() || (canSee('pos') && (role() === 'chef' || job() !== 'front'));
-const can86 = () => boss() || (canChange('pos') && (role() === 'chef' || job() === 'kitchen'));
+// Job views (RRA-132): what a staff person can do comes from their job title
+// (Settings → People → Job titles). Chefs, managers and the Admin as before.
+const staffCan = (k, lv = 'change') => role() === 'staff' && (lv === 'see' ? canSee('pos') : canChange('pos')) && jobAllows(k);
+export const canSeat = () => boss() || staffCan('seating');           // see the seating layout, seat guests
+export const canTake = () => boss() || staffCan('orders');            // take orders and payments
+export const canClear = () => boss() || role() === 'chef' || staffCan('tables'); // clear tables
+export const canOrder = () => canSeat() || canTake();                 // the Orders menu entry
+export const canTables = () => canClear();
+const kitchenSt = () => (boss() || role() === 'chef' ? ['Kitchen', 'Bar'] : ['Kitchen', 'Bar'].filter((s) => staffCan(s.toLowerCase(), 'see')));
+export const canKitchen = () => kitchenSt().length > 0;
+const can86 = () => boss() || (canChange('pos') && (role() === 'chef' || jobAllows('kitchen')));
 export const canSales = () => boss();
 const meId = () => myStaff()?.id || (isHost() ? 'admin' : session.profile?.iid || 'me');
 const meName = () => session.profile?.name || 'Me';
 
 // ---------- menu from the Recipe archive ----------
-const STATION = (section) => /bar|beverage|drink|beer|wine|cocktail/i.test(section) ? 'Bar' : 'Kitchen';
+// RRA-135: the station comes from js/drinks.js. Every alcoholic drink goes to
+// the Bar; other sections follow Settings → Menu sections → Send to.
 // Choices asked for when a dish is added; the lists live in js/brand.js.
-export function modsFor(name, section) {
+export function modsFor(name, section, kind = '') {
   const C = BRAND.posChoices || {};
+  const dc = (BRAND.drinks?.choices || {})[kind];
+  if (dc) return { title: dc.title, options: dc.options.map((o) => o[0]), drink: dc.options };
   if (/wing/i.test(name) || /wings/i.test(section)) return C.wings || null;
   if (/burger/i.test(section) && !/veggie/i.test(name)) return C.burger || null;
   if (/salad/i.test(section)) return C.salad || null;
@@ -64,10 +76,16 @@ const photoOf = dishPhoto;
 const tint = (s) => COLORS[[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length];
 async function menu() {
   const s = await data.settings();
+  const hh = { ...HH_DEFAULT, ...(s.pos?.happyHour || {}) };
   const order = s.sections || [];
-  const dishes = (await data.list('recipe')).filter((r) => r.kind === 'dish' && r.section && +r.price > 0);
-  const secs = [...new Set(dishes.map((d) => d.section))].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
-  return secs.map((section) => ({ section, items: dishes.filter((d) => d.section === section).sort((a, b) => (a.menuOrder ?? 999) - (b.menuOrder ?? 999) || a.name.localeCompare(b.name)).map((d) => ({ id: d.id, name: d.name, price: +d.price, section, station: STATION(section), photo: photoOf(d) })) }));
+  // RRA-141: every menu section is a tab, and dishes with no price yet show
+  // grayed out ("No price yet"), so new sections like Cocktails are easy to find.
+  const dishes = (await data.list('recipe')).filter((r) => r.kind === 'dish' && r.section);
+  const secs = [...new Set([...order.filter((x) => x !== 'Other'), ...dishes.map((d) => d.section)])].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+  return secs.map((section) => ({ section, items: dishes.filter((d) => d.section === section).sort((a, b) => (a.menuOrder ?? 999) - (b.menuOrder ?? 999) || a.name.localeCompare(b.name)).map((d) => {
+    const now = priceNow(d, hh);
+    return { id: d.id, name: d.name, price: now.price, base: +d.price, hh: now.hh, noPrice: !(+d.price > 0), kind: drinkKind(d), section, station: stationOf(d, s), photo: photoOf(d) };
+  }) }));
 }
 
 // ---------- checks ----------
@@ -124,17 +142,19 @@ const curArea = (areas) => { const a = LS.get('posArea', areas[0].id); return ar
 const numPick = (name, n, on, taken = []) => `<div class="num-pick" data-pick="${name}">${Array.from({ length: n }, (_, i) => i + 1).map((v) => `<button type="button" data-v="${v}" class="${v === on ? 'on' : ''}" ${taken.includes(v) && v !== on ? 'disabled' : ''}>${v}</button>`).join('')}</div>`;
 const wirePick = (el, name, set) => $$(`[data-pick="${name}"] button`, el).forEach((b) => b.onclick = () => { $$(`[data-pick="${name}"] button`, el).forEach((x) => x.classList.toggle('on', x === b)); set(+b.dataset.v); });
 
-function floorHtml(tables, checks, P, edit, size = FLOOR) {
+function floorHtml(tables, checks, P, edit, size = FLOOR, dirty = {}) {
   const cell = (x, y) => tables.find((t) => t.x === x && t.y === y);
+  const showMoney = canTake();
   let h = '';
   for (let y = 0; y < size.rows; y++) for (let x = 0; x < size.cols; x++) {
     const t = cell(x, y);
     if (!t) { h += edit ? `<button type="button" class="fl-cell fl-empty" data-cell="${x},${y}" style="grid-column:${x + 1};grid-row:${y + 1}" aria-label="Add a table here">+</button>` : ''; continue; }
     const c = checks.find((k) => k.tableId === t.id || (!k.tableId && k.name === tableName(t)));
     const tot = c ? totals(c, P.tax).total : 0;
-    h += `<button type="button" class="fl-t k-${t.kind}${c ? ' busy' : ''}" data-t="${t.id}" style="grid-column:${x + 1};grid-row:${y + 1}">
+    const d = !c && !edit && dirty[t.id];
+    h += `<button type="button" class="fl-t k-${t.kind}${c ? ' busy' : ''}${d ? ' dirty' : ''}" data-t="${t.id}" style="grid-column:${x + 1};grid-row:${y + 1}">
       <b>${esc((SHORT[t.kind] || '') + t.no)}</b>
-      <small>${c ? `${c.guests} · ${mins(c.opened)}m` : `${t.seats} seat${t.seats > 1 ? 's' : ''}`}</small>${c ? `<small class="fl-amt">${money(tot)}</small>` : ''}</button>`;
+      <small>${c ? `${c.guests} · ${mins(c.opened)}m` : d ? `Clear · ${mins(d.at)}m` : `${t.seats} seat${t.seats > 1 ? 's' : ''}`}</small>${c && showMoney ? `<small class="fl-amt">${money(tot)}</small>` : ''}</button>`;
   }
   // Small areas stay small: each square is at most about 96px wide.
   return `<div class="floor${edit ? ' edit' : ''}" style="--cols:${size.cols};--rows:${size.rows};max-width:${size.cols * 104 + 24}px">${h}</div>`;
@@ -142,35 +162,38 @@ function floorHtml(tables, checks, P, edit, size = FLOOR) {
 
 // Orders (POS): the seating layout.
 export async function posView() {
-  setChrome({ tab: 'more', back: true });
+  setChrome({ tab: jobAreas() ? 'pos' : 'more', back: !jobAreas() });
   setTitle('Seating');
-  if (!canOrder()) { view.innerHTML = lock('Orders are for servers, bartenders, managers and the Admin.'); return; }
+  if (!canSeat()) { view.innerHTML = lock('Seating is for hosts, servers, bartenders, managers and the Admin.'); return; }
   const P = await posSettings(), staff = await data.list('staff');
   const all = tablesOf(P), areas = areasOf(P), area = curArea(areas);
   const tables = all.filter((t) => t.area === area);
   const open = await openChecks();
+  const dirty = await dirtyTables();
   const mine = open.filter((c) => boss() || c.server === meId());
-  setTitle('Seating', `<button class="btn small" id="pos-cur" type="button">Current orders${mine.length ? ` (${mine.length})` : ''}</button>`);
+  setTitle('Seating', canTake() ? `<button class="btn small" id="pos-cur" type="button">Current orders${mine.length ? ` (${mine.length})` : ''}</button>` : '');
   const today = new Date().toDateString();
   const closedToday = (await data.list('check')).filter((c) => c.closed && new Date(c.closed).toDateString() === today).length;
   view.innerHTML = `
     ${areaTabs(areas, area, all, open)}
-    ${floorHtml(tables, open, P, false, sizeOf(areas.find((a) => a.id === area)))}
-    <p class="muted small center" style="margin:0 0 6px">Tap a free table to seat guests. Tap a seated table to bring up its order.</p>
-    <div class="fl-key small muted"><span><i class="fl-dot"></i> Free</span><span><i class="fl-dot busy"></i> Seated</span></div>
+    ${floorHtml(tables, open, P, false, sizeOf(areas.find((a) => a.id === area)), dirty)}
+    <p class="muted small center" style="margin:0 0 6px">Tap a free table to seat guests.${canTake() ? ' Tap a seated table to bring up its order.' : ''}${canClear() ? ' Tap a table marked Clear once it\'s bussed.' : ''}</p>
+    <div class="fl-key small muted"><span><i class="fl-dot"></i> Free</span><span><i class="fl-dot busy"></i> Seated</span><span><i class="fl-dot dirty"></i> Needs clearing</span></div>
     <div class="group">
+      ${canClear() ? `<a class="row nav" href="#/tables"><span class="grow">Tables to clear</span>${Object.keys(dirty).length ? `<span class="chip warn">${Object.keys(dirty).length}</span>` : ''}</a>` : ''}
       ${boss() ? '<a class="row nav" href="#/seating"><span class="grow"><span class="title">Change the seating layout</span><span class="sub">Areas (dining room, bar, outside) and their tables, booths and seats</span></span></a>' : ''}
       ${canKitchen() ? '<a class="row nav" href="#/tickets"><span class="grow">Kitchen and bar screen</span></a>' : ''}
       ${canSales() ? '<a class="row nav" href="#/possales"><span class="grow">Today\'s sales</span></a>' : ''}
       ${BRAND.giftCards?.url ? '<a class="row nav" href="#/giftcards"><span class="grow">Gift cards</span></a>' : ''}
     </div>
     <p class="muted small center">${closedToday} check${closedToday === 1 ? '' : 's'} closed today · cards through ${esc(payService(P).name)}</p>`;
-  $('#pos-cur').onclick = () => currentOrders(staff, P);
+  $('#pos-cur')?.addEventListener('click', () => currentOrders(staff, P));
   $$('[data-area]').forEach((b) => b.onclick = () => { LS.set('posArea', b.dataset.area); posView(); });
   $$('[data-t]').forEach((b) => b.onclick = async () => {
     const t = tables.find((x) => x.id === b.dataset.t);
     const c = open.find((k) => k.tableId === t.id || (!k.tableId && k.name === tableName(t)));
-    if (c) { location.hash = '#/poscheck/' + c.id; return; }
+    if (c) { if (canTake()) location.hash = '#/poscheck/' + c.id; else toast(`${tableName(t)} · ${c.guests} guest${c.guests > 1 ? 's' : ''} · ${(c.serverName || 'Server').split(' ')[0]} · ${mins(c.opened)} min`); return; }
+    if (dirty[t.id]) { if (await clearSheet(t, dirty[t.id])) posView(); return; }
     seatTable(t);
   });
 }
@@ -179,14 +202,34 @@ export async function posView() {
 async function seatTable(t) {
   let guests = Math.min(t.seats || 2, 2) || 1;
   const max = Math.max(12, t.seats || 0);
+  const take = canTake();
+  // A host seats guests for a server (RRA-132): pick whose table it is.
+  const servers = take ? [] : (await data.list('staff')).filter((s) => !s.removed && (s.role === 'manager' || jobAllows('orders', s)));
+  let server = null;
   const ok = await sheet({
-    title: `Seat ${tableName(t)}`, right: 'Open',
-    body: `<div class="pr-lab">How many guests?</div>${numPick('g', max, guests)}<p class="muted small">${t.seats} seat${t.seats > 1 ? 's' : ''} at this ${(KINDS[t.kind] || 'table').toLowerCase()}.</p>`,
-    onMount(api) { wirePick(api.el, 'g', (v) => { guests = v; api.close(true); }); }, // one tap opens the table
+    title: `Seat ${tableName(t)}`, right: take ? 'Open' : 'Seat',
+    body: `<div class="pr-lab">How many guests?</div>${numPick('g', max, guests)}<p class="muted small">${t.seats} seat${t.seats > 1 ? 's' : ''} at this ${(KINDS[t.kind] || 'table').toLowerCase()}.</p>
+      ${take ? '' : `<label class="field"><span>Server</span><select id="sv">${servers.map((s) => `<option value="${s.id}">${esc(s.name)} · ${esc(s.position || '')}</option>`).join('')}</select></label>`}`,
+    onMount(api) {
+      wirePick(api.el, 'g', (v) => { guests = v; if (take) api.close(true); }); // one tap opens the table
+      api.onRight = () => { server = $('#sv', api.el)?.value || null; api.close(true); };
+    },
   });
   if (!ok) return;
+  const dirty = await data.get('tablestate', t.id);
+  if (dirty?.dirty) await data.put('tablestate', { ...dirty, dirty: false, clearedBy: meName(), clearedAt: Date.now() });
+  if (!take) {
+    const P = await posSettings();
+    const no = (P.seq ?? 100) + 1;
+    await savePos({ seq: no });
+    const sv = servers.find((s) => s.id === server) || null;
+    await data.put('check', { no, name: tableName(t), tableId: t.id, kind: t.kind === 'bar' ? 'tab' : 'table', guests, server: sv?.id || meId(), serverName: sv?.name || meName(), seatedBy: meName(), opened: Date.now(), items: [], payments: [], tax: P.tax });
+    toast(`${tableName(t)} seated${sv ? ' for ' + sv.name.split(' ')[0] : ''}`);
+    posView();
+    return;
+  }
   const P = await posSettings();
-  const no = (P.seq || 100) + 1;
+  const no = (P.seq ?? 100) + 1; // seq is 0 after Clear test data (RRA-130), so the next check is #1
   await savePos({ seq: no });
   const c = await data.put('check', { no, name: tableName(t), tableId: t.id, kind: t.kind === 'bar' ? 'tab' : 'table', guests, server: meId(), serverName: meName(), opened: Date.now(), items: [], payments: [], tax: P.tax });
   posCheckView.seat = 1;
@@ -216,18 +259,19 @@ async function currentOrders(staff, P) {
 // The Orders popup (RRA-114): opened from the menu, it offers Seating and
 // brings the current orders straight up.
 export async function posMenu() {
-  if (!canOrder() && !canKitchen()) { location.hash = '#/pos'; return; }
+  if (!canOrder() && !canKitchen()) { location.hash = canClear() ? '#/tables' : '#/pos'; return; }
   const P = await posSettings(), staff = await data.list('staff');
-  const list = canOrder() ? (await openChecks()).filter((c) => boss() || c.server === meId()).sort((a, b) => a.opened - b.opened) : [];
+  const list = canTake() ? (await openChecks()).filter((c) => boss() || c.server === meId()).sort((a, b) => a.opened - b.opened) : [];
   const go = await sheet({
     title: 'Orders', left: 'Close',
     body: `<div class="group">
-        ${canOrder() ? '<button class="row nav" type="button" data-go="#/pos"><span class="grow"><span class="title">Seating</span><span class="sub">Seat a table and take its order</span></span></button>' : ''}
+        ${canSeat() ? `<button class="row nav" type="button" data-go="#/pos"><span class="grow"><span class="title">Seating</span><span class="sub">${canTake() ? 'Seat a table and take its order' : 'Seat guests for a server'}</span></span></button>` : ''}
+        ${canClear() ? '<button class="row nav" type="button" data-go="#/tables"><span class="grow">Tables to clear</span></button>' : ''}
         ${canKitchen() ? '<button class="row nav" type="button" data-go="#/tickets"><span class="grow">Kitchen and bar screen</span></button>' : ''}
         ${canSales() ? '<button class="row nav" type="button" data-go="#/possales"><span class="grow">Today\'s sales</span></button>' : ''}
         ${boss() ? '<button class="row nav" type="button" data-go="#/seating"><span class="grow">Change the seating layout</span></button>' : ''}
       </div>
-      ${canOrder() ? `<div class="section-label">Current orders</div>${list.length ? `<div class="group">${list.map((c) => { const nm = staffName(c.server, staff); return `<button class="row nav" type="button" data-go="#/poscheck/${c.id}">${avatar(nm)}<span class="grow"><span class="title">${esc(c.name)}</span><span class="sub">${c.guests} guest${c.guests > 1 ? 's' : ''} · ${mins(c.opened)} min</span></span><span class="pr-num"><b>${money(totals(c, P.tax).total)}</b></span></button>`; }).join('')}</div>` : '<p class="muted small">No open orders.</p>'}` : ''}`,
+      ${canTake() ? `<div class="section-label">Current orders</div>${list.length ? `<div class="group">${list.map((c) => { const nm = staffName(c.server, staff); return `<button class="row nav" type="button" data-go="#/poscheck/${c.id}">${avatar(nm)}<span class="grow"><span class="title">${esc(c.name)}</span><span class="sub">${c.guests} guest${c.guests > 1 ? 's' : ''} · ${mins(c.opened)} min</span></span><span class="pr-num"><b>${money(totals(c, P.tax).total)}</b></span></button>`; }).join('')}</div>` : '<p class="muted small">No open orders.</p>'}` : ''}`,
     onMount(api) { $$('[data-go]', api.el).forEach((b) => b.onclick = () => api.close(b.dataset.go)); },
   });
   if (go) location.hash = go;
@@ -356,12 +400,34 @@ function tableSheet(t, tables) {
 }
 
 // ------------------------------------------------------------ one check
-export async function posCheckView(id) {
-  setChrome({ tab: 'more', back: true });
+// RRA-140: redrawing the same order keeps the screen where it was. After a
+// dish is picked, the seat bar ("Adding to") sits at the top of the screen on
+// a phone; the check above it only comes back when the server pulls down.
+const posAnchor = () => $('#pos-seatbar') || $('.pos-right');
+function posPlace(id) {
+  if (posCheckView.shown !== id || !$('.pos-wrap')) return null;
+  const a = posAnchor();
+  return { y: window.scrollY, a: a ? a.getBoundingClientRect().top : null, left: $('.pos-left')?.scrollTop || 0 };
+}
+function posRestore(place, pin) {
+  if (!place) return;
+  const left = $('.pos-left'); if (left) left.scrollTop = place.left;
+  const a = posAnchor();
+  if (!pin || isWide() || !a || place.a == null) { window.scrollTo(0, place.y); return; }
+  const top = $('#top')?.getBoundingClientRect().bottom ?? 0;
+  // A pick puts the seat bar at the top, unless the server is already further down the menu.
+  const want = place.a > top ? top : place.a;
+  window.scrollTo(0, Math.max(0, window.scrollY + a.getBoundingClientRect().top - want));
+}
+
+export async function posCheckView(id, opt = {}) {
+  const place = posPlace(id);
+  setChrome({ tab: 'more', back: true, keep: !!place });
   const c = await data.get('check', id);
   if (!c || c.closed) { location.hash = '#/pos'; return; }
-  if (!canOrder()) { setTitle(c.name); view.innerHTML = lock('Orders are for servers, bartenders and managers.'); return; }
+  if (!canTake()) { setTitle(c.name); view.innerHTML = lock('Orders are for servers, bartenders and managers.'); return; }
   const P = await posSettings(), M = await menu();
+  ackSeated(c.id); ack86(); // RRA-137: seen the new table and the 86 list
   setTitle(c.name, `<span class="muted small">#${c.no} · ${esc((c.serverName || '').split(' ')[0])}</span>`);
   let section = LS.get('posSec', M[0]?.section);
   if (!M.some((m) => m.section === section)) section = M[0]?.section;
@@ -383,7 +449,7 @@ export async function posCheckView(id) {
     <div class="card pos-check${LS.get('posFold', true) && c.items.length ? ' folded' : ''}">
       ${c.items.length ? `<button type="button" class="pos-fold" id="fold">${c.items.reduce((n, x) => n + (x.voided ? 0 : x.qty || 1), 0)} item${c.items.length === 1 && (c.items[0].qty || 1) === 1 ? '' : 's'} on this check <span>${LS.get('posFold', true) ? 'Show ▾' : 'Hide ▴'}</span></button>` : ''}
       <div class="pos-head"><span>Item</span><span>Qty</span><span>Amount</span></div>
-      ${c.items.length ? seats.map((s) => `<div class="pos-seat">${c.guests > 1 ? `<div class="pr-lab">Seat ${s}</div>` : ''}${c.items.filter((x) => x.seat === s).map((x) => `
+      ${c.items.length ? seats.map((s) => `<div class="pos-seat">${c.guests > 1 || (c.ids || {})[s] ? `<div class="pr-lab">${c.guests > 1 ? `Seat ${s}` : ''}${(c.ids || {})[s] ? ` <span class="pos-idok">🪪 21+ checked</span>` : ''}</div>` : ''}${c.items.filter((x) => x.seat === s).map((x) => `
         <div class="pos-line${x.voided ? ' void' : ''}">
           <button class="pos-name" type="button" data-line="${x.id}"><span>${esc(short(x.name))}</span>${x.mods?.length ? `<span class="pos-mod">${esc(x.mods.join(', '))}</span>` : ''}${x.note ? `<span class="pos-mod">“${esc(x.note)}”</span>` : ''}<span class="pos-st">${x.voided ? 'void' : x.sent ? '✓ sent' : '<b style="color:var(--warn)">new</b>'}</span></button>
           <span class="pos-qty">${x.voided ? `<b>${x.qty || 1}</b>` : `<button type="button" data-minus="${x.id}" aria-label="One less">−</button><b>${x.qty || 1}</b><button type="button" data-plus="${x.id}" aria-label="One more">+</button>`}</span>
@@ -400,17 +466,23 @@ export async function posCheckView(id) {
         <button class="btn" id="pay" type="button" ${c.items.some((x) => !x.voided) ? '' : 'disabled'}>Pay ${money(t.due)}</button>
       </div>
     </div>
-    ${c.guests > 1 ? `<div class="pr-lab" style="margin:12px 0 4px">Adding to</div><div class="segmented">${Array.from({ length: c.guests }, (_, i) => `<button type="button" data-seat="${i + 1}" class="${seat === i + 1 ? 'on' : ''}">Seat ${i + 1}</button>`).join('')}</div>` : ''}
+    ${c.guests > 1 ? `<div id="pos-seatbar" class="pos-seatbar"><div class="pr-lab" style="margin:12px 0 4px">Adding to</div><div class="segmented">${Array.from({ length: c.guests }, (_, i) => `<button type="button" data-seat="${i + 1}" class="${seat === i + 1 ? 'on' : ''}">Seat ${i + 1}</button>`).join('')}</div></div>` : ''}
     </div>
     <div class="pos-right">
+    ${happyNow({ ...HH_DEFAULT, ...(P.happyHour || {}) }) ? `<div class="pos-hhbar">🍻 Happy hour prices are on · ${esc(hhLabel({ ...HH_DEFAULT, ...P.happyHour }))}</div>` : ''}
     <div class="pos-secs pos-tabs">${M.map((m) => `<button type="button" data-sec="${esc(m.section)}" class="${m.section === section ? 'on' : ''}">${esc(m.section)}</button>`).join('')}</div>
-    <div class="pos-grid">${items.map((x) => { const out = P.eightySix[x.id]; return `<button type="button" class="pos-tile${out ? ' out' : ''}${x.photo ? '' : ' nopic'}" data-item="${x.id}" ${out ? 'disabled' : ''} style="--tile:${tint(x.section + x.name)}">
+    <div class="pos-grid">${items.map((x) => { const out = P.eightySix[x.id]; const np = x.noPrice; return `<button type="button" class="pos-tile${out ? ' out' : ''}${np ? ' noprice' : ''}${x.photo ? '' : ' nopic'}" data-item="${x.id}" ${out || (np && !boss()) ? 'disabled' : ''} style="--tile:${tint(x.section + x.name)}">
       <span class="pos-pic">${x.photo ? `<img src="${esc(x.photo)}" alt="" loading="lazy">` : `<span>${esc(short(x.name))}</span>`}</span>
-      <span class="pos-cap"><span class="pos-tn">${esc(short(x.name))}</span><small>${out ? '86’d' : money(x.price)}</small></span></button>`; }).join('') || '<p class="muted small">No dishes with a price in this section. Add prices in Recipes.</p>'}</div>
+      <span class="pos-cap"><span class="pos-tn">${esc(short(x.name))}</span><small>${out ? '86’d' : np ? (boss() ? 'No price yet · tap to set' : 'No price yet') : x.hh ? `<s>${money(x.base)}</s> <b class="pos-hh">${money(x.price)}</b>` : money(x.price)}${isAlcohol(x.kind) ? ' <span class="pos-21">21+</span>' : ''}</small></span></button>`; }).join('') || `<p class="muted small">Nothing in ${esc(section || 'this section')} yet. Add ${/beer|wine|liquor|cocktail|drink|beverage/i.test(section || '') ? 'drinks' : 'dishes'} in Recipes.</p>`}</div>
     </div></div>`;
-  $$('[data-sec]').forEach((b) => b.onclick = () => { LS.set('posSec', b.dataset.sec); posCheckView(id); });
-  $$('[data-seat]').forEach((b) => b.onclick = () => { posCheckView.seat = +b.dataset.seat; posCheckView(id); });
-  $$('[data-item]').forEach((b) => b.onclick = () => addItem(c, items.find((x) => x.id === b.dataset.item), seat));
+  posCheckView.shown = c.id; posRestore(place, opt.pin);
+  $$('[data-sec]').forEach((b) => b.onclick = () => { LS.set('posSec', b.dataset.sec); posCheckView(id, { pin: true }); });
+  $$('[data-seat]').forEach((b) => b.onclick = () => { posCheckView.seat = +b.dataset.seat; posCheckView(id, { pin: true }); });
+  $$('[data-item]').forEach((b) => b.onclick = async () => {
+    const x = items.find((y) => y.id === b.dataset.item);
+    if (x.noPrice) { if (await setPriceSheet(x)) posCheckView(id, { pin: true }); return; }
+    addItem(c, x, seat);
+  });
   $$('[data-line]').forEach((b) => b.onclick = () => lineSheet(c, c.items.find((x) => x.id === b.dataset.line)));
   $$('[data-plus]').forEach((b) => b.onclick = () => bump(c, b.dataset.plus, +1));
   $$('[data-minus]').forEach((b) => b.onclick = () => bump(c, b.dataset.minus, -1));
@@ -461,23 +533,82 @@ async function bump(c, lineId, d) {
 
 const lid = () => Math.random().toString(36).slice(2, 9);
 async function addItem(c, x, seat) {
-  const m = modsFor(x.name, x.section);
-  let line = { id: lid(), menuId: x.id, name: x.name, price: x.price, station: x.station, mods: [], note: '', seat, qty: 1, sent: false };
+  // RRA-135: the first alcoholic drink on a seat asks for a 21+ ID check.
+  if (isAlcohol(x.kind) && !(c.ids || {})[seat] && !(await idCheck(c, seat))) return;
+  const m = modsFor(x.name, x.section, x.kind);
+  let line = { id: lid(), menuId: x.id, name: x.name, price: x.price, station: x.station, mods: [], note: '', seat, qty: 1, sent: false, ...(x.kind ? { kind: x.kind } : {}), ...(x.hh ? { hh: true } : {}) };
   if (m) {
     const pick = await sheet({
       title: short(x.name), left: 'Cancel',
       body: `<div class="pr-lab">${esc(m.title)}</div><div class="pos-choices">${m.options.map((o) => `<button type="button" class="btn tonal" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div>
-        <label class="field"><span>Note for the kitchen (optional)</span><input type="text" id="nt" placeholder="e.g. no onions"></label>`,
+        <label class="field"><span>Note for the ${x.station === 'Bar' ? 'bar' : 'kitchen'} (optional)</span><input type="text" id="nt" placeholder="e.g. no onions"></label>`,
       onMount(api) { $$('[data-o]', api.el).forEach((b) => b.onclick = () => api.close({ mod: b.dataset.o, note: $('#nt', api.el).value.trim() })); },
     });
     if (!pick) return;
     line = { ...line, mods: [pick.mod], note: pick.note };
+    // A double pours twice and costs more (js/brand.js drinks.choices).
+    const o = (m.drink || []).find((d) => d[0] === pick.mod);
+    if (o?.[1]) line.pourX = o[1];
+    if (o?.[2]) line.price = r2(line.price * o[2]);
   }
   const cur = await data.get('check', c.id);
   // The same dish again on the same seat, not sent yet: one more of it.
   const same = !line.mods.length && !line.note && cur.items.find((y) => !y.sent && !y.voided && y.menuId === x.id && y.seat === seat && !(y.mods || []).length && !y.note);
   await data.put('check', { ...cur, items: same ? cur.items.map((y) => (y === same ? { ...y, qty: (y.qty || 1) + 1 } : y)) : [...cur.items, line] });
-  posCheckView(c.id);
+  posCheckView(c.id, { pin: true });
+}
+
+// RRA-141: a manager or the Admin types a missing price right from Orders.
+async function setPriceSheet(x) {
+  const v = await sheet({
+    title: short(x.name), right: 'Save',
+    body: `<p class="muted small" style="margin-top:0">This ${x.kind ? 'drink' : 'dish'} has no price yet, so it can't be ordered. Set its menu price (it's saved in Recipes too).</p>
+      <label class="field"><span>Menu price</span><input type="text" inputmode="decimal" id="np" placeholder="e.g. 8.00"></label><p id="np-err" class="small" style="color:var(--danger)"></p>`,
+    onMount(api) {
+      setTimeout(() => $('#np', api.el)?.focus(), 50);
+      api.onRight = () => { const n = parseFloat($('#np', api.el).value.replace('$', '')); if (!(n > 0)) { $('#np-err', api.el).textContent = 'Type a price above $0.'; return; } api.close(n.toFixed(2)); };
+    },
+  });
+  if (!v) return false;
+  const r = await data.get('recipe', x.id);
+  if (!r) return false;
+  await data.put('recipe', { ...r, price: v });
+  toast(`${short(x.name)}: ${money(+v)}`);
+  return true;
+}
+
+// RRA-135: 21+ ID check, once per seat. Saved on the check with who checked.
+async function idCheck(c, seat) {
+  const age = legalAge(), d = new Date();
+  const born = new Date(d.getFullYear() - age, d.getMonth(), d.getDate()).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const ok = await sheet({
+    title: 'Check ID', left: 'Cancel',
+    body: `<div class="pos-idcard"><div class="pos-idbig">🪪 ${age}+</div><p><b>${c.guests > 1 ? `Seat ${seat}: c` : 'C'}heck the guest's ID before serving alcohol.</b></p>
+      <p>Born on or before <b>${born}</b></p><p class="muted small">Make sure the ID is not expired and the photo matches.</p></div>
+      <div class="stack"><button class="btn block" type="button" data-id="ok">ID checked: ${age} or older</button>
+      <button class="btn block tonal" type="button" data-id="no" style="color:var(--danger)">Under ${age} or no ID: don't serve</button></div>`,
+    onMount(api) { $$('[data-id]', api.el).forEach((b) => b.onclick = () => api.close(b.dataset.id)); },
+  });
+  if (ok === 'no') toast('Not added. No alcohol for this seat.');
+  if (ok !== 'ok') return false;
+  const cur = await data.get('check', c.id);
+  const ids = { ...(cur.ids || {}), [seat]: { by: meName(), at: Date.now() } };
+  await data.put('check', { ...cur, ids });
+  c.ids = ids;
+  return true;
+}
+
+// RRA-135: drinks sent to the bar count their bottles down in Stock (pours
+// from the drink's recipe). A voided drink puts them back. Never below 0.
+async function pourStock(lines, sign) {
+  const drinks = lines.filter((x) => (x.kind && x.kind !== 'na') || x.pourX);
+  if (!drinks.length) return;
+  const stock = await data.list('stock');
+  const use = stockUse(drinks, await data.list('recipe'), stock);
+  for (const [id, n] of Object.entries(use)) {
+    const s = stock.find((y) => y.id === id);
+    if (s) await data.put('stock', { ...s, onHand: Math.round(Math.max(0, (+s.onHand || 0) - sign * n) * 1e4) / 1e4 });
+  }
 }
 
 async function lineSheet(c, x) {
@@ -499,6 +630,7 @@ async function lineSheet(c, x) {
   let items = cur.items.map((y) => (y.id !== x.id ? y : act.move ? { ...y, seat: act.move } : act.a === 'void' ? { ...y, voided: true, voidBy: meName() } : y));
   if (act.a === 'remove') items = items.filter((y) => y.id !== x.id);
   await data.put('check', { ...cur, items });
+  if (act.a === 'void' && x.poured) await pourStock([x], -1);
   if (act.a === 'void') toast('Voided');
   posCheckView(c.id);
 }
@@ -510,7 +642,8 @@ async function send(c) {
     const its = unsent.filter((x) => x.station === st);
     if (its.length) await data.put('ticket', { checkId: cur.id, checkName: cur.name, server: cur.serverName || '', serverId: cur.server || '', station: st, at: Date.now(), items: its.map((x) => ({ name: x.name, qty: x.qty || 1, mods: x.mods || [], note: x.note || '', seat: x.seat, done: false })) });
   }
-  await data.put('check', { ...cur, items: cur.items.map((x) => (unsent.includes(x) ? { ...x, sent: true } : x)) });
+  await data.put('check', { ...cur, items: cur.items.map((x) => (unsent.includes(x) ? { ...x, sent: true, ...(x.kind && x.kind !== 'na' ? { poured: true } : {}) } : x)) });
+  await pourStock(unsent, 1);
 }
 
 // ------------------------------------------------------------ pay
@@ -540,7 +673,7 @@ async function payPopup(id) {
   for (;;) {
     const c = await data.get('check', id);
     if (!c || c.closed) return true;
-    if (!canOrder()) { toast('Taking payment is for servers, bartenders and managers'); return false; }
+    if (!canTake()) { toast('Taking payment is for servers, bartenders and managers'); return false; }
     const P = await posSettings();
     const t = totals(c, P.tax), ps = parts(c, P.tax), mode = c.split?.mode || 'whole', locked = (c.payments || []).length > 0, svc = payService(P);
     const r = await sheet({
@@ -581,6 +714,7 @@ async function payPart(c, part, P) {
   const next = { ...cur, payments };
   if (totals(next, P.tax).due <= 0.004) {
     await data.put('check', { ...next, closed: Date.now(), closedDate: data.today() });
+    if (next.tableId) await data.put('tablestate', { id: next.tableId, dirty: true, at: Date.now(), checkNo: next.no, name: next.name }); // RRA-132: needs clearing
     toast(`${c.name} paid and closed`); return true;
   }
   await data.put('check', next); toast('Payment recorded'); return false;
@@ -662,10 +796,10 @@ function chime() {
 }
 export async function showPickups() {
   const list = await myPickups();
-  for (const b of $$('.pos-badge')) { b.hidden = !list.length; b.textContent = list.length; }
   let box = $('#pickups');
   if (!list.length) { if (box) box.remove(); return; }
-  if (!box) { box = document.createElement('div'); box.id = 'pickups'; box.className = 'pickups'; box.setAttribute('role', 'status'); document.body.append(box); }
+  if (!box) { box = document.createElement('div'); box.id = 'pickups'; box.className = 'pickups'; box.setAttribute('role', 'status'); }
+  placePickups(box);
   const fresh = list.filter((p) => !pickupSeen.has(p.id + (p.late ? 'L' : '')));
   if (fresh.length) {
     chime();
@@ -684,8 +818,18 @@ export async function showPickups() {
     showPickups();
   });
 }
+// RRA-138: an open pop-up (sheet) sits on the phone's top layer, dims the
+// screen and blocks taps on everything behind it, so the banner goes inside
+// the open pop-up and comes back out when it closes. Picked up then works
+// over Team access, a check, or any other pop-up.
+function placePickups(box) {
+  const host = dlg.open ? dlg : document.body;
+  if (box.parentNode !== host) host.append(box);
+}
 export function startPickups() {
   if (startPickups.on) return; startPickups.on = true;
+  new MutationObserver(() => { const box = $('#pickups'); if (box) placePickups(box); else if (dlg.open) showPickups(); })
+    .observe(dlg, { attributes: true, attributeFilter: ['open'], childList: true });
   data.onChange((coll) => { if (coll === 'pickup' || coll === 'punch' || coll === 'settings') showPickups(); });
   setInterval(showPickups, 15000);
   showPickups();
@@ -693,14 +837,16 @@ export function startPickups() {
 
 // ------------------------------------------------------------ kitchen and bar screen
 export async function ticketsView() {
-  setChrome({ tab: 'more', back: true });
+  setChrome({ tab: jobAreas() ? 'tickets' : 'more', back: !jobAreas() });
   if (!canKitchen()) { setTitle('Kitchen screen'); view.innerHTML = lock('The kitchen and bar screen is for the kitchen, the bar, managers and the Admin.'); return; }
-  let station = LS.get('posStation', job() === 'bar' ? 'Bar' : 'Kitchen');
+  const sts = kitchenSt();
+  let station = LS.get('posStation', sts[0]);
+  if (!sts.includes(station)) station = sts[0];
   setTitle(station === 'Bar' ? 'Bar tickets' : 'Kitchen tickets', can86() ? '<button class="btn plain small" id="e86" type="button">86 list</button>' : '');
   const all = (await data.list('ticket')).filter((t) => !t.bumped);
   const live = all.filter((t) => t.station === station).sort((a, b) => a.at - b.at);
   view.innerHTML = `
-    <div class="segmented">${['Kitchen', 'Bar'].map((s) => `<button type="button" data-st="${s}" class="${s === station ? 'on' : ''}">${s} (${all.filter((t) => t.station === s).length})</button>`).join('')}</div>
+    <div class="segmented"${sts.length < 2 ? ' hidden' : ''}>${sts.map((s) => `<button type="button" data-st="${s}" class="${s === station ? 'on' : ''}">${s} (${all.filter((t) => t.station === s).length})</button>`).join('')}</div>
     <div class="pos-tix">${live.map((t) => { const m = mins(t.at); return `
       <div class="card pos-ticket ${m >= 15 ? 'late' : m >= 8 ? 'warm' : ''}">
         <div class="pos-th"><b>${esc(t.checkName)}</b><span>${m} min</span></div>
@@ -731,7 +877,7 @@ async function eightySix() {
   await sheet({
     title: '86 list', left: 'Done',
     body: `<p class="muted small">Items switched off can't be ordered on any phone until they're back on.</p>${M.filter((m) => !/sauce/i.test(m.section)).map((m) => `<div class="section-label pr-flush">${esc(m.section)}</div><div class="group">${m.items.map((x) => `<div class="row"><span class="grow">${esc(x.name)}</span><button type="button" class="toggle ${off[x.id] ? '' : 'on'}" data-86="${x.id}" aria-label="Available"></button></div>`).join('')}</div>`).join('')}`,
-    onMount(api) { $$('[data-86]', api.el).forEach((b) => b.onclick = async () => { const k = b.dataset['86']; if (off[k]) delete off[k]; else off[k] = true; b.classList.toggle('on', !off[k]); await savePos({ eightySix: off }); }); },
+    onMount(api) { $$('[data-86]', api.el).forEach((b) => b.onclick = async () => { const k = b.dataset['86']; if (off[k]) delete off[k]; else off[k] = { by: meName(), at: Date.now() }; /* RRA-137: who 86'd it */ b.classList.toggle('on', !off[k]); await savePos({ eightySix: off }); }); },
   });
   ticketsView();
 }
@@ -789,6 +935,8 @@ export async function posSettingsView() {
     <div class="group">
       ${svc.how === 'terminal' ? `<div class="row"><span class="grow"><span class="title">Card reader name</span><span class="sub">The ${esc(svc.device || 'reader')} payments go to</span></span><span class="meta">${esc(P.device)}</span><button class="btn plain small" id="dev" type="button">Change</button></div>` : ''}
       <div class="row"><span class="grow"><span class="title">Order-up alert</span><span class="sub" style="white-space:normal">When a ticket is bumped, its server gets "Pick up". If nobody picks it up in this time, every server on the clock gets it in red.</span></span><span class="meta">${P.pickupDelay || 2} min</span><button class="btn plain small" id="pkd" type="button">Change</button></div>
+      <div class="row"><span class="grow"><span class="title">Check open too long</span><span class="sub" style="white-space:normal">Its server and the managers get an alert when a check is still open after this long (RRA-137).</span></span><span class="meta">${P.checkLate || 90} min</span><button class="btn plain small" id="ckl" type="button">Change</button></div>
+      <div class="row"><span class="grow"><span class="title">Happy hour</span><span class="sub" style="white-space:normal">${esc(hhLabel({ ...HH_DEFAULT, ...(P.happyHour || {}) }))}${P.happyHour?.on && +P.happyHour.off ? ` · $${(+P.happyHour.off).toFixed(2)} off alcoholic drinks` : ''}. Drinks with their own happy hour price in Recipes use that price.</span></span><button class="btn plain small" id="hh" type="button">Change</button></div>
       <div class="row"><span class="grow"><span class="title">Sales tax</span><span class="sub">Check the rate for your address</span></span><span class="meta">${(P.tax * 100).toFixed(2)}%</span><button class="btn plain small" id="tax" type="button">Change</button></div>
     </div>
     <p class="muted small">Nothing is connected yet, so card payments are practice runs. Going live needs the restaurant's server for the payment keys and a developer account with ${esc(svc.id === 'practice' ? 'the payment company' : svc.name)}.</p>`;
@@ -801,5 +949,84 @@ export async function posSettingsView() {
       onMount: (api) => wirePick(api.el, 'pk', (n) => { v = n; }) });
     if (ok) { await savePos({ pickupDelay: v }); toast(`Order-up alert: ${v} min`); posSettingsView(); }
   };
+  $('#ckl').onclick = async () => {
+    const opts = [45, 60, 90, 120, 150, 180];
+    const v = await sheet({ title: 'Check open too long', right: 'Save',
+      body: `<label class="field"><span>Alert after</span><select id="ck">${opts.map((m) => `<option value="${m}"${m === (P.checkLate || 90) ? ' selected' : ''}>${m < 60 ? m + ' minutes' : (m / 60) + (m === 60 ? ' hour' : ' hours')}</option>`).join('')}</select></label>`,
+      onMount: (api) => { api.onRight = () => api.close(+$('#ck', api.el).value); } });
+    if (v) { await savePos({ checkLate: v }); toast(`Check alert: ${v} min`); posSettingsView(); }
+  };
+  $('#hh').onclick = async () => { if (await happyHourSheet(P)) posSettingsView(); };
   $('#tax').onclick = async () => { const v = await sheet({ title: 'Sales tax', right: 'Save', body: `<label class="field"><span>Percent</span><input type="text" inputmode="decimal" id="tx" value="${(P.tax * 100).toFixed(2)}"></label><p class="muted small">New checks use the new rate; open checks keep theirs.</p>`, onMount: (api) => { api.onRight = () => api.close(parseFloat($('#tx', api.el).value)); } }); if (v >= 0 && v < 20) { await savePos({ tax: v / 100 }); posSettingsView(); } };
+}
+
+
+// RRA-135: happy hour days, times and the amount off every alcoholic drink.
+async function happyHourSheet(P) {
+  const hh = { ...HH_DEFAULT, ...(P.happyHour || {}) };
+  const days = new Set(hh.days);
+  const D7 = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
+  const v = await sheet({
+    title: 'Happy hour', right: 'Save',
+    body: `<div class="group"><div class="row"><span class="grow">Happy hour prices</span><button class="toggle ${hh.on ? 'on' : ''}" id="hh-on" type="button" aria-label="Happy hour on"></button></div></div>
+      <div class="pr-lab">Days</div><div class="num-pick hh-days">${D7.map(([d, n]) => `<button type="button" data-d="${d}" class="${days.has(d) ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="facts" style="background:none">
+        <label class="field" style="margin:0"><span>Starts</span><input type="time" id="hh-a" value="${esc(hh.start)}"></label>
+        <label class="field" style="margin:0"><span>Ends</span><input type="time" id="hh-b" value="${esc(hh.end)}"></label>
+      </div>
+      <label class="field"><span>Dollars off every alcoholic drink (optional)</span><input type="text" inputmode="decimal" id="hh-off" value="${esc(hh.off || '')}" placeholder="e.g. 1.00"></label>
+      <p class="muted small">A drink or dish with its own happy hour price (set in Recipes) uses that price instead. Prices change on new orders only; drinks already on a check keep their price.</p>`,
+    onMount(api) {
+      $('#hh-on', api.el).onclick = (e) => { hh.on = !hh.on; e.currentTarget.classList.toggle('on', hh.on); };
+      $$('[data-d]', api.el).forEach((b) => b.onclick = () => { const d = +b.dataset.d; if (days.has(d)) days.delete(d); else days.add(d); b.classList.toggle('on', days.has(d)); });
+      api.onRight = () => api.close({ ...hh, days: [...days], start: $('#hh-a', api.el).value || hh.start, end: $('#hh-b', api.el).value || hh.end, off: $('#hh-off', api.el).value.trim().replace('$', '') });
+    },
+  });
+  if (!v) return false;
+  await savePos({ happyHour: v });
+  toast(v.on ? 'Happy hour: ' + hhLabel(v) : 'Happy hour is off');
+  return true;
+}
+
+// ------------------------------------------------------------ tables to clear (RRA-132)
+// When a check is paid its table turns "Needs clearing". Bussers, servers,
+// hosts, managers and the Admin tap Clear once it's bussed.
+async function dirtyTables() {
+  return Object.fromEntries((await data.list('tablestate')).filter((x) => x.dirty).map((x) => [x.id, x]));
+}
+async function clearSheet(t, d) {
+  if (!canClear()) { toast(`${tableName(t)} needs clearing`); return false; }
+  const ok = await sheet({
+    title: `Clear ${tableName(t)}?`, right: 'Cleared',
+    body: `<p>Paid ${mins(d.at)} minutes ago${d.checkNo ? ` (check #${d.checkNo})` : ''}. Tap Cleared once it's bussed and reset, so it shows as free.</p>`,
+  });
+  if (!ok) return false;
+  await data.put('tablestate', { ...d, dirty: false, clearedBy: meName(), clearedAt: Date.now() });
+  toast(`${tableName(t)} is free`);
+  return true;
+}
+export async function tablesView() {
+  setChrome({ tab: jobAreas() ? 'tables' : 'more', back: !jobAreas() });
+  setTitle('Tables');
+  if (!canClear()) { view.innerHTML = lock('Clearing tables is for bussers, servers, hosts, managers and the Admin.'); return; }
+  const P = await posSettings();
+  const all = tablesOf(P), areas = areasOf(P), area = curArea(areas);
+  const tables = all.filter((t) => t.area === area);
+  const open = await openChecks(), dirty = await dirtyTables();
+  const list = all.filter((t) => dirty[t.id]).sort((a, b) => dirty[a.id].at - dirty[b.id].at);
+  view.innerHTML = `
+    ${list.length ? `<div class="section-label">Needs clearing · ${list.length}</div><div class="group">${list.map((t) => `<div class="row"><span class="grow"><span class="title">${esc(tableName(t))}</span><span class="sub">${esc(areas.find((a) => a.id === t.area)?.name || '')} · paid ${mins(dirty[t.id].at)} min ago</span></span><button class="btn small" type="button" data-clear="${t.id}">Cleared</button></div>`).join('')}</div>`
+      : '<div class="card center muted">All tables are clear.</div>'}
+    ${areaTabs(areas, area, all, open)}
+    ${floorHtml(tables, open, P, false, sizeOf(areas.find((a) => a.id === area)), dirty)}
+    <div class="fl-key small muted"><span><i class="fl-dot"></i> Free</span><span><i class="fl-dot busy"></i> Seated</span><span><i class="fl-dot dirty"></i> Needs clearing</span></div>`;
+  $$('[data-area]').forEach((b) => b.onclick = () => { LS.set('posArea', b.dataset.area); tablesView(); });
+  $$('[data-clear]').forEach((b) => b.onclick = async () => { const t = all.find((x) => x.id === b.dataset.clear); await data.put('tablestate', { ...dirty[t.id], dirty: false, clearedBy: meName(), clearedAt: Date.now() }); toast(`${tableName(t)} is free`); tablesView(); });
+  $$('[data-t]').forEach((b) => b.onclick = async () => {
+    const t = tables.find((x) => x.id === b.dataset.t);
+    const c = open.find((k) => k.tableId === t.id || (!k.tableId && k.name === tableName(t)));
+    if (c) { if (canTake()) location.hash = '#/poscheck/' + c.id; else toast(`${tableName(t)} · ${c.guests} guest${c.guests > 1 ? 's' : ''} · ${mins(c.opened)} min`); return; }
+    if (dirty[t.id]) { if (await clearSheet(t, dirty[t.id])) tablesView(); return; }
+    if (canSeat()) seatTable(t); else toast(`${tableName(t)} is free`);
+  });
 }

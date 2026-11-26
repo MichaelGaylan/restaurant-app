@@ -4,7 +4,7 @@
 // A coupon is a shared record ('coupon'): a typed code (WINGS20), an offer
 // (percent off, dollar off, a free dish, or buy one get one), and its rules.
 // The QR code or barcode on a printed or texted coupon holds only
-// "<tag>:<code>", e.g. BLG:WINGS20 or BLG:WINGS20-7F3K9Q for a one-time code.
+// "<tag>:<code>", e.g. HSG:WINGS20 or HSG:WINGS20-7F3K9Q for a one-time code.
 // The offer itself is looked up here, so a home-made QR code can't name its
 // own discount, and another restaurant's app turns it away (different tag).
 //

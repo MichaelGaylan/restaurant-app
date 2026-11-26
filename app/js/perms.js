@@ -56,8 +56,57 @@ export function level(area, who = null) {
   if (role === 'owner') return 'change';
   if (area in PAY_AREAS && role !== 'manager') return 'none'; // never for staff or chefs
   const perms = who ? who.perms : myStaff()?.perms;
-  return perms?.[area] || ROLE_DEFAULTS[role]?.[area] || ROLE_DEFAULTS.staff[area] || 'none';
+  const lv = perms?.[area] || ROLE_DEFAULTS[role]?.[area] || ROLE_DEFAULTS.staff[area] || 'none';
+  // Job views (RRA-132): staff see only the parts of the app their job uses.
+  if (role === 'staff' && lv !== 'none') {
+    const j = jobAreas(who || myStaff());
+    const need = AREA_JOB[area];
+    if (j && need && !need.some((k) => j.includes(k))) return 'none';
+  }
+  return lv;
 }
+
+// ---------------------------------------------------------------- job views (RRA-132)
+// Each job title has its own set of screens. Only people with the Staff role
+// are limited this way; chefs, managers and the Admin see what their role
+// allows, as before. The Admin edits a job's screens in Job titles.
+export const JOB_AREAS = {
+  seating: 'Seating: seat guests',
+  orders: 'Take orders and payments',
+  tables: 'Clear tables',
+  kitchen: 'Kitchen tickets',
+  bar: 'Bar tickets',
+  recipes: 'Recipes',
+  prep: 'Prep lists',
+  stock: 'Stock counts and order guides',
+  schedule: 'Schedule',
+  board: 'Bulletin board',
+  events: 'Events (BEOs)',
+  music: 'Music',
+};
+// Which job screens open each permission area (perms AREAS)
+const AREA_JOB = { recipes: ['recipes'], prep: ['prep'], stock: ['stock'], orders: ['stock'], schedule: ['schedule'], board: ['board'], events: ['events'], pos: ['seating', 'orders', 'tables', 'kitchen', 'bar'] };
+export function defaultJobAreas(title = '') {
+  const t = String(title).toLowerCase();
+  if (/bus/.test(t)) return ['tables', 'board', 'schedule'];
+  if (/barback/.test(t)) return ['bar', 'tables', 'stock', 'board', 'schedule'];
+  if (/bar/.test(t)) return ['seating', 'orders', 'tables', 'bar', 'board', 'schedule', 'music'];
+  if (/host/.test(t)) return ['seating', 'tables', 'board', 'schedule', 'music'];
+  if (/server|wait|front|cashier/.test(t)) return ['seating', 'orders', 'tables', 'board', 'schedule'];
+  if (/runner|expo/.test(t)) return ['kitchen', 'tables', 'board', 'schedule'];
+  if (/dish/.test(t)) return ['kitchen', 'prep', 'board', 'schedule'];
+  return ['kitchen', 'recipes', 'prep', 'stock', 'board', 'schedule']; // cooks and anything else
+}
+let JOB_VIEWS = {};
+export const setJobViews = (v) => { JOB_VIEWS = v && typeof v === 'object' ? v : {}; };
+// The job screens for a staff person, or null when they aren't limited.
+export function jobAreas(st = myStaff()) {
+  const role = st === myStaff() ? session.profile?.role : st?.role;
+  if (role !== 'staff') return null;
+  const title = st?.position || '';
+  return Array.isArray(JOB_VIEWS[title]) ? JOB_VIEWS[title] : defaultJobAreas(title);
+}
+export const jobAllows = (k, st) => { const j = jobAreas(st); return !j || j.includes(k); };
 
 export const canSee = (area) => level(area) !== 'none';
 export const canChange = (area) => level(area) === 'change';

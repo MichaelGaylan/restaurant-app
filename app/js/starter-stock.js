@@ -1,9 +1,15 @@
-// Starter stock list for a new restaurant: common non-food supplies only.
-// Food and bar items are added by each restaurant in Stock.
+// Starter stock list (RRA-024). The items themselves are restaurant-specific,
+// so they live in each restaurant's brand.js (starterStock, RSW-020, made by
+// the setup wizard); this file keeps the tab layout, the helpers and the
+// common non-food supplies every restaurant shares.
 
-export const STOCK_STATUS = 'Starter list: add your own food and bar items.';
+const BRAND = globalThis.BRAND;
 
-export const STARTER_STOCK = [
+export const STOCK_STATUS = BRAND.stockStatus || 'Starter list: check it and add your own items.';
+
+// Common non-food supplies (RRA-058): a restaurant without its own
+// starterStock gets these. The wizard adds them after the food groups.
+export const SUPPLIES = [
   { group: 'Cleaning and chemicals', items: [
     ['Dish machine detergent', 'jug'], ['Dish machine rinse aid', 'jug'], ['Sanitizer (quat)', 'jug'], ['Sanitizer test strips', 'pack'],
     ['Degreaser', 'jug'], ['Floor cleaner', 'jug'], ['Glass cleaner', 'bottle'], ['Oven and grill cleaner', 'can'], ['Fryer boil-out', 'pack'],
@@ -26,6 +32,10 @@ export const STARTER_STOCK = [
   ] },
 ];
 
+// The restaurant's own groups first, then any supply group it doesn't have.
+const OWN = BRAND.starterStock || [];
+export const STARTER_STOCK = [...OWN, ...SUPPLIES.filter((g) => !OWN.some((o) => o.group === g.group))];
+
 // Tabs at the top of Stock (RRA-058). Food covers every group not listed here.
 export const NON_FOOD = ['Cleaning and chemicals', 'Paper and to-go', 'Smallwares', 'Linens and uniforms'];
 // RRA-115: no All tab; the count opens on the first group.
@@ -34,4 +44,4 @@ export const isFood = (group) => !NON_FOOD.includes(group);
 
 // Starter items the 2026-11-19 menu update split or renamed. applyMenu()
 // removes them from a phone's list only while they are still untouched.
-export const REPLACED_STOCK = [];
+export const REPLACED_STOCK = BRAND.replacedStock || [];

@@ -1,21 +1,21 @@
 // Restaurant kitchen app: screens and navigation. Names come from js/brand.js.
 
 import {
-  BRAND, APP_NAME, VERSION, BUILD, WHATS_NEW, ROOT_KEYS, INACTIVITY_DAYS, INVITE_HOURS,
+  BRAND, APP_NAME, VERSION, BUILD, WHATS_NEW, ROOT_KEYS, CODE_OWNER_LINE, INACTIVITY_DAYS, INVITE_HOURS,
   WEB3FORMS_KEY, REPORT_PREFIX, NOTIFICATIONS_URL, brandText,
 } from './config.js';
 import * as access from './access.js';
 import * as store from './store.js';
 import * as data from './data.js';
 import * as sync from './sync.js';
-import { canSee, canChange, isHost, myStaff } from './perms.js';
+import { canSee, canChange, isHost, myStaff, setJobViews, jobAreas, jobAllows } from './perms.js';
 import { findDuplicates, countDuplicates } from './dedupe.js';
 import { reportsView, reportPopups, sendReportInApp, openReports } from './reports.js';
 import { recipesView, recipeView, printView } from './recipes.js';
 import { stockView, neededView, ordersView, vendorsView } from './stock.js';
 import { boardView, unreadPosts } from './board.js';
 import { prepView } from './prep.js';
-import { scheduleView, staffView, ensureStaffFor, staffList, schedulePrintView, swapPopups, shiftTimesView } from './schedule.js';
+import { scheduleView, staffView, ensureStaffFor, staffList, schedulePrintView, swapPopups, shiftTimesView, jobTitlesView, positionList } from './schedule.js';
 import { eventsView, eventView, dueEvents, eventPopups } from './events.js';
 import { costsView } from './costs.js';
 import { loungeView, timesheetView, timesheetsView, canTime } from './lounge.js';
@@ -23,9 +23,11 @@ import { settingsView, listView, rolesView, personView, dedupeView } from './set
 import { applyMenu, applyVendors, applySupplies } from './menu.js';
 import { payrollView, payRunView, payRunDoneView, payHistoryView, myPayView, tipRulesView, paySettingsView } from './payroll.js';
 import { payrollSettings, hasPayroll } from './paycalc.js';
-import { couponsView, couponView } from './coupons.js';
-import { posView, posCheckView, posPayView, ticketsView, posSalesView, posSettingsView, canOrder, canKitchen, canSales, posMenu, seatingView, startPickups, showPickups } from './pos.js';
+import { posView, posCheckView, posPayView, ticketsView, posSalesView, posSettingsView, canOrder, canKitchen, canSales, posMenu, seatingView, startPickups, showPickups, tablesView, canSeat, canClear } from './pos.js';
 import { giftCardsView } from './giftcards.js';
+import { startAlerts, setLoungeExtra, alertsView, badge } from './alerts.js'; // RRA-137
+import { timeOffPopups } from './timeoff.js'; // RRA-139
+import { couponsView, couponView } from './coupons.js';
 import { musicView } from './music.js';
 import { clearDataView } from './cleardata.js';
 
@@ -167,10 +169,10 @@ async function onRequest(iid, box) {
   if (waiting.has(iid)) return;
   const text = await access.openRequest(box);
   const req = await access.readRequest(text); // throws if used, expired or not ours
-  waiting.set(iid, { iid, text, name: req.invite.name, at: Date.now() });
+  waiting.set(iid, { iid, text, name: req.invite.name, at: Date.now(), restore: !!req.restore });
   updateBadge();
   if (location.hash.startsWith('#/team') && !dlg.open) teamView();
-  else toast(`${req.invite.name}'s phone is waiting for your approval`);
+  else toast(req.restore ? `${req.invite.name} is asking to get back in. See More → Invite and approve phones.` : `${req.invite.name}'s phone is waiting for your approval`);
   if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
     navigator.serviceWorker?.ready.then((r) => r.showNotification(APP_NAME, {
       body: `${req.invite.name}'s phone is waiting for your approval.`, tag: `req-${iid}`, icon: BRAND.icon192,
@@ -178,13 +180,29 @@ async function onRequest(iid, box) {
   }
 }
 
+// RRA-134: a request someone else already handled leaves this list too.
+function requestGone(iid) {
+  if (!waiting.delete(iid)) return;
+  updateBadge();
+  if (location.hash.startsWith('#/team') && !dlg.open) teamView();
+}
+// RRA-134: manager and Admin phones leave their public sealing key where a
+// locked-out phone can find it, so "Ask to get back in" reaches all of them.
+const doorId = (ek) => profile?.iid || `a-${ek.slice(-20)}`;
+async function openDoor() {
+  if (!sync.enabled() || !profile) return;
+  const ek = await access.myEcdhPublic();
+  const flag = BRAND.dataPrefix + 'door';
+  if (access.can(profile, 'invite')) { if (await sync.publishDoor(doorId(ek), ek).catch(() => false)) localStorage.setItem(flag, '1'); }
+  else if (localStorage.getItem(flag)) { await sync.dropDoor(doorId(ek)); localStorage.removeItem(flag); }
+}
+
 async function updateBadge() {
   const n = unreadCount() + (profile ? await unreadPosts() : 0) + waiting.size;
-  $('#tab-badge').hidden = !n;
-  $('#tab-badge').textContent = n;
   $('#bell-dot').hidden = !n;
-  const sb = $('#side-badge');
-  if (sb) { sb.hidden = !n; sb.textContent = n; }
+  // RRA-137: the Lounge badges come from alerts.js (messages, report replies,
+  // swaps); notices and phones waiting for approval are added here.
+  setLoungeExtra(unreadCount() + waiting.size);
   // RRA-105: events coming up, on the sidebar and More.
   const ev = profile ? (await dueEvents().catch(() => [])).length : 0;
   for (const b of $$('#ev-badge, #more-ev-badge')) { b.hidden = !ev; b.textContent = ev; }
@@ -196,22 +214,23 @@ async function payFlags() { const ok = hasPayroll(await payrollSettings()); rend
 function renderSide() {
   const link = (r, label, extra = '') => `<a href="#/${r}" data-r="${r}"><span class="grow">${label}</span>${extra}</a>`;
   const items = [
-    link('recipes', 'Recipes'),
+    canSee('recipes') ? link('recipes', 'Recipes') : '',
+    jobAreas() && canClear() ? link('tables', 'Tables', badge('tables')) : '',
     canSee('prep') ? link('prep', 'Prep') : '',
     canSee('stock') ? link('stock', 'Stock count') : '',
-    canSee('stock') ? link('needed', 'Needed') : '',
+    canSee('stock') ? link('needed', 'Needed', badge('stock')) : '',
     canSee('orders') ? link('orders', 'Order guides') : '',
-    link('lounge', 'Employee lounge', '<i id="side-badge" class="sbadge" hidden></i>'),
+    link('lounge', 'Employee lounge', badge('lounge')),
     canSee('board') ? link('board', '<span class="sub-l">Bulletin board</span>') : '',
     canSee('schedule') ? link('schedule', '<span class="sub-l">Schedule</span>') : '',
     canTime() ? link('timesheets', '<span class="sub-l">Time sheets</span>') : link('timesheet', '<span class="sub-l">My time sheet</span>'),
     myStaff() ? link('mypay', '<span class="sub-l">My pay &amp; tips</span>') : '',
     renderSide.pay ? link('payroll', 'Payroll') : '',
-    canOrder() ? link('pos', 'Orders (POS)', '<i class="sbadge pos-badge" hidden></i>').replace('<a ', '<a data-pospop ') : '',
-    canKitchen() ? link('tickets', '<span class="sub-l">Kitchen and bar screen</span>') : '',
+    canOrder() ? link('pos', 'Orders (POS)', badge('pos')).replace('<a ', '<a data-pospop ') : '',
+    canKitchen() ? link('tickets', '<span class="sub-l">Kitchen and bar screen</span>', badge('tickets')) : '',
     canSee('coupons') ? link('coupons', 'Coupons') : '',
     BRAND.giftCards?.url ? link('giftcards', 'Gift cards') : '',
-    link('music', 'Music'),
+    jobAllows('music') ? link('music', 'Music') : '',
     canSee('events') ? link('events', 'Events (BEOs)', '<i id="ev-badge" class="sbadge" hidden></i>') : '',
     canSee('costs') ? link('costs', 'Costs and waste') : '',
     '<hr>',
@@ -240,12 +259,13 @@ function moreView() {
       <p class="muted small">${profile.role === 'owner' ? 'Admin phone. Access does not expire.' : `Access stays on while you use it. It ends after ${daysLeft} days without opening the app.`}</p>
     </div>
     <div class="group">
-      ${canOrder() ? '<a class="row" href="#/pos" data-pospop><span class="grow">Orders (POS)</span><i class="sbadge pos-badge" hidden></i></a>' : ''}
-      ${canKitchen() ? '<a class="row" href="#/tickets"><span class="grow">Kitchen and bar screen</span></a>' : ''}
+      ${canOrder() ? '<a class="row" href="#/pos" data-pospop><span class="grow">Orders (POS)</span>' + badge('pos') + '</a>' : ''}
+      ${canKitchen() ? '<a class="row" href="#/tickets"><span class="grow">Kitchen and bar screen</span>' + badge('tickets') + '</a>' : ''}
       ${canSales() ? '<a class="row" href="#/possales"><span class="grow">Today\'s sales</span></a>' : ''}
       ${canSee('coupons') ? '<a class="row" href="#/coupons"><span class="grow">Coupons</span></a>' : ''}
       ${BRAND.giftCards?.url ? '<a class="row" href="#/giftcards"><span class="grow">Gift cards</span></a>' : ''}
-      <a class="row" href="#/music"><span class="grow">Music</span></a>
+      ${canClear() ? '<a class="row" href="#/tables"><span class="grow">Tables to clear</span>' + badge('tables') + '</a>' : ''}
+      ${jobAllows('music') ? '<a class="row" href="#/music"><span class="grow">Music</span></a>' : ''}
       ${moreView.pay ? '<a class="row" href="#/payroll"><span class="grow">Payroll</span></a>' : ''}
       ${myStaff() ? '<a class="row" href="#/mypay"><span class="grow">My pay &amp; tips</span></a>' : ''}
       ${canSee('schedule') ? '<a class="row" href="#/schedule"><span class="grow">Schedule</span></a>' : ''}
@@ -253,6 +273,7 @@ function moreView() {
       ${canSee('costs') ? '<a class="row" href="#/costs"><span class="grow">Costs and waste</span></a>' : ''}
     </div>
     <div class="group">
+      <a class="row" href="#/alerts"><span class="grow">Alerts</span><span class="meta">Badges, chime, notifications</span></a>
       <a class="row" href="#/settings"><span class="grow">Settings</span><span class="meta">${esc(THEMES[getTheme()])}</span></a>
       ${access.can(profile, 'invite') ? `<a class="row" href="#/team"><span class="grow">Invite and approve phones</span>${waiting.size ? `<span class="chip warn">${waiting.size} waiting</span>` : ''}</a>` : ''}
       ${isHost() ? `<a class="row" href="#/backup"><span class="grow">Admin backup</span>${LS.get('backupAt', 0) ? '' : '<span class="chip warn">Not made yet</span>'}</a>` : ''}
@@ -267,6 +288,7 @@ function moreView() {
       <button class="row" id="leave" type="button" style="color:var(--danger)"><span class="grow">Remove access from this phone</span></button>
     </div>
     <p class="muted small center">${esc(APP_NAME)} ${VERSION} · build ${BUILD}</p>`;
+  updateBadge();
   $('#show-notice').onclick = () => sheet({ title: 'Notices of use', left: null, right: 'Done', body: NOTICE_HTML });
   $('#leave').onclick = async () => {
     const ok = await sheet({ title: 'Remove access?', right: 'Remove', body: `<p>This deletes the app's data from this phone, including recipes saved here. You'll need a new invite to use it again.</p>${profile.role === 'owner' ? '<p class="hint">This is the Admin phone. Removing access deletes the Admin key. You can get back in only with an Admin backup, or by adding a new key to the app.</p>' : ''}` });
@@ -371,7 +393,7 @@ function aboutView() {
       <img src="${esc(BRAND.icon192)}" alt="" width="84" height="84" style="border-radius:20px">
       <h2 style="margin:10px 0 0">${esc(APP_NAME)}</h2>
       <p class="muted">Version ${VERSION} · build ${BUILD}</p>
-      <p class="small muted">${esc(BRAND.restaurant)} · ${esc(BRAND.location)}</p>${BRAND.credit ? `<p class="small muted">${esc(BRAND.credit)}</p>` : ''}
+      <p class="small muted">${esc(BRAND.restaurant)} · ${esc(BRAND.location)}</p>${BRAND.credit ? `<p class="small muted">${esc(BRAND.credit)}</p>` : ''}${CODE_OWNER_LINE ? `<p class="small muted">${esc(CODE_OWNER_LINE)}</p>` : ''}
     </div>
     <div class="section-label">How to use it</div>
     <div class="card small">
@@ -467,21 +489,28 @@ function reportView() {
 
 // ------------------------------------------------ Team (RRA-018)
 
+// RRA-133: the job they do, asked whenever someone is let in, so nobody ends
+// up on the Line cook screens by mistake.
+const jobOptions = (list, pick = '') => `<option value="">Choose their job…</option>${list.map((p) => `<option${p === pick ? ' selected' : ''}>${esc(p)}</option>`).join('')}`;
+const autoJob = (role) => (role === 'manager' ? 'Manager' : role === 'chef' ? 'Chef' : '');
+
 async function teamView(incoming) {
   if (!access.can(profile, 'invite')) { location.hash = '#/more'; return; }
   setChrome({ tab: 'more', back: true });
   setTitle('Team access');
   const invites = (await access.issuedInvites()).sort((a, b) => b.iat - a.iat);
+  const jobs = await positionList();
   view.innerHTML = `
     <div class="section-label">1. Send an invite</div>
     <div class="card">
-      <label class="field" style="margin-top:0"><span>Their name</span><input type="text" id="i-name" placeholder="e.g. Sam (line cook)" autocomplete="off"></label>
+      <label class="field" style="margin-top:0"><span>Their name</span><input type="text" id="i-name" placeholder="e.g. Sam" autocomplete="off"></label>
       <label class="field"><span>Role</span><select id="i-role"><option value="staff">Staff</option><option value="chef">Chef</option>${access.can(profile, 'invite.manager') ? '<option value="manager">Manager (can invite and approve phones)</option>' : ''}</select></label>
+      <label class="field" id="i-job-f"><span>Job</span><select id="i-job">${jobOptions(jobs)}</select></label>
       <button class="btn block" id="i-make" type="button">Create invite</button>
       <p class="muted small">Each invite works once, on one phone, within ${INVITE_HOURS} hours.</p>
     </div>
     ${waiting.size ? `<div class="section-label">Waiting for you</div>
-    <div class="group">${[...waiting.values()].map((w) => `<button class="row nav" type="button" data-wait="${esc(w.iid)}"><span class="grow"><span class="title">${esc(w.name)}</span><span class="sub">Their phone sent a request</span></span><span class="chip warn">Check</span></button>`).join('')}</div>` : ''}
+    <div class="group">${[...waiting.values()].map((w) => `<button class="row nav" type="button" data-wait="${esc(w.iid)}"><span class="grow"><span class="title">${esc(w.name)}</span><span class="sub">${w.restore ? 'Asking to get back in' : 'Their phone sent a request'}</span></span><span class="chip warn">Check</span></button>`).join('')}</div>` : ''}
     <div class="section-label">2. Approve their phone</div>
     <div class="card">
       <p class="small muted" style="margin-top:0">When they open the invite, their request shows up above by itself${sync.enabled() ? '' : ' (with shared data on)'}. If it doesn't, they can send it by text: paste it here.</p>
@@ -494,18 +523,23 @@ async function teamView(incoming) {
     <div class="section-label">Invites from this phone</div>
     <div class="group">${invites.length ? invites.map((i) => `
       <div class="row"><span class="grow"><span class="title">${esc(i.name)} <span class="chip">${esc(access.ROLES[i.role])}</span></span>
-      <span class="sub">Sent ${fmtDate(i.iat)} · id ${esc(i.iid)}</span></span>
+      <span class="sub">${i.pos ? `${esc(i.pos)} · ` : ''}Sent ${fmtDate(i.iat)} · id ${esc(i.iid)}</span></span>
       ${i.status === 'approved' ? '<span class="chip ok">Approved</span>' : Date.now() > i.exp ? '<span class="chip">Expired</span>' : '<span class="chip warn">Waiting</span>'}</div>`).join('')
       : '<div class="row muted">None yet.</div>'}</div>
     <p class="muted small">To take access away right now, send the invite id to the app's developer so it can be added to the revoked list. Otherwise access ends by itself after ${INACTIVITY_DAYS} days without use.</p>`;
 
+  // Chefs and managers get their job title from their role.
+  const jobShown = () => { $('#i-job-f').hidden = ($('#i-role')?.value || 'staff') !== 'staff'; };
+  $('#i-role').onchange = jobShown; jobShown();
   $('#i-make').onclick = async () => {
     const name = $('#i-name').value.trim();
     if (!name) { $('#i-name').focus(); return; }
     const role = $('#i-role')?.value || 'staff';
+    const pos = autoJob(role) || $('#i-job').value;
+    if (!pos) { toast('Choose their job'); $('#i-job').focus(); return; }
     if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
     let code;
-    try { code = await access.createInvite(profile, name, role); }
+    try { code = await access.createInvite(profile, name, role, pos); }
     catch (e) { toast(e.message); return; }
     const link = `${location.origin}${location.pathname}#t=${code}`;
     const text = `${APP_NAME} invite for ${name}. Open this on your own phone (works once, for ${INVITE_HOURS} hours):\n${link}`;
@@ -533,27 +567,47 @@ async function teamView(incoming) {
     const known = req.restore ? (await staffList()).find((x) => x.name.trim().toLowerCase() === req.invite.name.trim().toLowerCase()) : null;
     const roles = ['staff', 'chef', ...(access.can(profile, 'invite.manager') ? ['manager'] : [])];
     const def = roles.includes(known?.role) ? known.role : 'staff';
+    const jobs = await positionList(known?.position);
+    // Older invites carry no job title: ask for it now (RRA-133).
+    const askJob = req.restore || (!req.invite.pos && (req.invite.role || 'staff') === 'staff');
     const ok = await sheet({
       title: req.restore ? 'Let them back in' : 'Approve phone', right: 'Approve',
       body: `${req.restore
         ? `<p><b>${esc(req.invite.name)}</b> lost access on their phone and is asking to get back in.</p>
           <label class="field"><span>Role</span><select id="r-role">${roles.map((r) => `<option value="${r}"${r === def ? ' selected' : ''}>${esc(access.ROLES[r])}</option>`).join('')}</select></label>
           ${known ? '' : '<p class="hint small">No one with this name is on the staff list. Make sure you know who this is.</p>'}`
-        : `<p><b>${esc(req.invite.name)}</b> · ${esc(access.ROLES[req.invite.role])}</p>`}
+        : `<p><b>${esc(req.invite.name)}</b> · ${esc(access.ROLES[req.invite.role])}${req.invite.pos ? ` · ${esc(req.invite.pos)}` : ''}</p>`}
+        ${askJob ? `<label class="field" id="r-job-f"><span>Job</span><select id="r-job">${jobOptions(jobs, known && !known.noJob ? known.position : '')}</select></label>` : ''}
         <p>Ask them to read the code on their phone. It must match:</p>
         <div class="code-big">${esc(req.deviceCode)}</div>
         <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="match" style="width:22px;height:22px"> The code on their phone matches</label>`,
-      onMount: (api) => { api.onRight = () => { if ($('#match', api.el).checked) api.close($('#r-role', api.el)?.value || true); else toast('Check the code with them first'); }; },
+      onMount: (api) => {
+        const jobShown = () => { const f = $('#r-job-f', api.el); if (f) f.hidden = !!autoJob($('#r-role', api.el)?.value || req.invite.role); };
+        $('#r-role', api.el)?.addEventListener('change', jobShown); jobShown();
+        api.onRight = () => {
+          if (!$('#match', api.el).checked) { toast('Check the code with them first'); return; }
+          const role = $('#r-role', api.el)?.value || req.invite.role;
+          const pos = askJob ? (autoJob(role) || $('#r-job', api.el)?.value || '') : '';
+          if (askJob && !pos) { toast('Choose their job'); return; }
+          api.close({ role, pos });
+        };
+      },
     });
     if (!ok) return;
     let code;
-    try { code = await access.approve(profile, req, typeof ok === 'string' ? ok : undefined); }
+    try { code = await access.approve(profile, req, req.restore ? ok.role : undefined, ok.pos); }
     catch (e) { toast(e.message); return; }
-    if (waiting.has(req.invite.iid)) { waiting.delete(req.invite.iid); sync.clearRequest(req.invite.iid); updateBadge(); }
+    // RRA-134: the activation goes straight back to their phone, and the
+    // request leaves every other manager's list.
+    let sentBack = false;
+    if (sync.enabled()) {
+      try { const box = await access.sealReply(req, code); if (box) sentBack = await sync.postReply(req.invite.iid, box); } catch { /* they can paste it */ }
+    }
+    waiting.delete(req.invite.iid); sync.clearRequest(req.invite.iid); updateBadge();
     const text = `${APP_NAME} activation for ${req.invite.name}. Copy this whole message, then open the app and tap Paste:\n${code}`;
     await sheet({
       title: 'Approved', left: null, right: 'Done',
-      body: `<p>Send this activation back to <b>${esc(req.invite.name)}</b>. It only works on their phone.</p>
+      body: `${sentBack ? `<p><b>Sent to ${esc(req.invite.name)}'s phone.</b> It opens by itself in a moment. If it doesn't, send this activation by text.</p>` : `<p>Send this activation back to <b>${esc(req.invite.name)}</b>. It only works on their phone.</p>`}
         <button class="btn block" id="s" type="button">Send activation</button>
         <button class="btn plain block" id="c" type="button" style="margin-top:6px">Copy whole message</button>
         ${codeBox(code, 'Activation')}`,
@@ -619,7 +673,7 @@ async function lockedView(incoming) {
     view.innerHTML = `
       <h2>Almost there, ${esc(pending.name)}</h2>
       ${pending.posted
-        ? `<p><b>Step 1.</b> Done: your request went to the manager who invited you. They get a note in the app. If they don't see it, send it by text too.</p>
+        ? `<p><b>Step 1.</b> Done: your request went to ${pending.restore ? 'every manager and the Admin. Any one of them can let you back in' : 'the manager who invited you'}. They get a note in the app. If they don't see it, send it by text too.</p>
           <button class="btn tonal block" id="send" type="button">Send request by text</button>`
         : `<p><b>Step 1.</b> Send your request to ${pending.restore ? 'a manager or the Admin' : 'the manager who invited you'}.</p>
           <p id="auto" class="small muted"></p>
@@ -627,7 +681,7 @@ async function lockedView(incoming) {
       <details class="code-more"><summary>Request code only</summary>${codeBox(pending.request, 'Request')}</details>
       <p style="margin-top:18px"><b>Step 2.</b> Your manager will ask for this code. Read it to them:</p>
       <div class="code-big">${esc(pending.deviceCode)}</div>
-      <p style="margin-top:18px"><b>Step 3.</b> Paste the activation your manager sends back.</p>
+      <p style="margin-top:18px"><b>Step 3.</b> ${pending.posted ? 'Keep this screen open: the app opens by itself once they approve. Or paste' : 'Paste'} the activation your manager sends back.</p>
       <textarea id="code" placeholder="Paste the activation" style="min-height:70px">${esc(incoming || '')}</textarea>
       <div class="btn-row" style="margin-top:10px">
         <button class="btn tonal" id="paste" type="button">Paste</button>
@@ -638,16 +692,33 @@ async function lockedView(incoming) {
     const req = `${APP_NAME} request from ${pending.name}. Paste this in the app under More → Invite and approve staff:\n${pending.request}`;
     $('#send').onclick = () => share(`${APP_NAME} request`, req);
     wireCodeBox(view, pending.request, 'Request');
-    if (pending.rk && !pending.posted && sync.enabled()) {
-      $('#auto').textContent = 'Sending your request to your manager’s phone…';
-      access.sealRequest(pending)
-        .then((box) => sync.postRequest(pending.iid, box))
+    // RRA-134: "let me back in" goes to every manager and Admin phone.
+    const sealed = pending.restore
+      ? () => sync.doorKeys().then((keys) => access.sealToAll(pending, keys))
+      : () => access.sealRequest(pending);
+    if ((pending.rk || pending.restore) && !pending.posted && sync.enabled()) {
+      $('#auto').textContent = pending.restore ? 'Sending your request to the managers and the Admin…' : 'Sending your request to your manager’s phone…';
+      sealed()
+        .then((box) => (box ? sync.postRequest(pending.iid, box) : false))
         .then(async (sent) => {
-          if (!sent) return;
+          if (!sent) { const a = $('#auto'); if (a && pending.restore) a.textContent = 'No manager phone could get it yet. Send it by text instead.'; return; }
           await store.put('pending', { ...pending, posted: Date.now() });
           if (!dlg.open && !$('#code').value) lockedView();
         })
         .catch(() => { const a = $('#auto'); if (a) a.textContent = 'Couldn’t send it automatically (no signal?). Send it by text instead.'; });
+    }
+    // RRA-134: the approval comes straight back; open the app when it does.
+    if (pending.posted && sync.enabled() && lockedView.watching !== pending.iid) {
+      lockedView.watching = pending.iid;
+      sync.watchReply(pending.iid, async (box) => {
+        try {
+          const code = await access.openReply(box);
+          profile = await access.activate(code);
+          sync.clearReply(pending.iid);
+          localStorage.removeItem(BRAND.dataPrefix + 'expiredNotice');
+          toast(`Welcome${pending.restore ? ' back' : ''}, ${profile.name}`); boot();
+        } catch { /* an old or wrong reply: they can still paste */ }
+      }).catch(() => { lockedView.watching = null; });
     }
     $('#paste').onclick = () => pasteInto($('#code'));
     $('#go').onclick = async () => {
@@ -660,7 +731,7 @@ async function lockedView(incoming) {
   }
 
   view.innerHTML = `
-    ${expired ? `<div class="hint"><b>Your access ended</b> after ${INACTIVITY_DAYS} days without use, or a manager removed it. Ask a manager for a new invite.</div>` : ''}
+    ${expired ? `<div class="hint"><b>Your access ended</b> after ${INACTIVITY_DAYS} days without use, or a manager removed it. Tap <b>Ask to get back in</b> below: any manager or the Admin can let you back in.</div>` : ''}
     <h2>Invite only</h2>
     <p>${esc(APP_NAME)} is for the ${esc(BRAND.shortName)} team. A manager sends you an invite, and it opens on your phone only.</p>
     ${installHint(incoming)}
@@ -760,6 +831,9 @@ const routes = {
   schedule: (arg) => scheduleView(arg),
   'schedule-print': (arg) => schedulePrintView(arg),
   staff: () => staffView(),
+  tables: () => tablesView(), // RRA-132
+  alerts: () => alertsView(), // RRA-137
+  jobtitles: () => jobTitlesView(), // RRA-131
   shifts: () => shiftTimesView(),
   events: () => eventsView(),
   event: (id) => eventView(id),
@@ -800,6 +874,7 @@ async function checkRoleGrant() {
   profile = next; session.profile = next;
   await data.put('staff', { ...me, grantSeen: Date.now(), role: next.role });
   if (access.can(profile, 'invite')) sync.onInbox(onRequest); else if (from === 'manager') sync.onInbox(null);
+  if (from !== next.role) openDoor(); // RRA-134
   if (next.role === 'manager') await sync.reopenPrivate();
   if (from === 'manager' && next.role !== 'manager') {
     // Others' hours and every pay rate leave this phone (only here, not for the team).
@@ -838,10 +913,29 @@ async function offerDedupe() {
   if (go) location.hash = '#/dedupe';
 }
 
+// Job views (RRA-132): the bottom tabs, the first screen and which screens open
+// follow the person's job title. Chefs, managers and the Admin as before.
+const ROUTE_JOB = { recipes: 'recipes', recipe: 'recipes', print: 'recipes', prep: 'prep', stock: 'stock', 'stock-items': 'stock', needed: 'stock', orders: 'stock', vendors: 'stock', board: 'board', schedule: 'schedule', 'schedule-print': 'schedule', events: 'events', event: 'events', music: 'music' };
+function homeRoute() {
+  if (!jobAreas()) return 'recipes';
+  return canSeat() ? 'pos' : canClear() ? 'tables' : canKitchen() ? 'tickets' : canSee('prep') ? 'prep' : canSee('recipes') ? 'recipes' : 'lounge';
+}
+function applyTabs() {
+  const limited = !!jobAreas();
+  const show = (t, on) => { const a = $(`#tabs a[data-tab="${t}"]`); if (a) a.hidden = !on; };
+  show('pos', limited && canSeat());
+  show('tables', limited && canClear() && !canSeat());
+  show('tickets', limited && canKitchen());
+  show('recipes', !limited || canSee('recipes'));
+  show('prep', !limited || canSee('prep'));
+  show('stock', !limited || canSee('stock'));
+}
 async function route() {
   if (!profile) return;
-  const [, name = 'recipes', arg] = location.hash.match(/^#\/([^/]+)\/?(.*)$/) || [];
+  let [, name = '', arg] = location.hash.match(/^#\/([^/]+)\/?(.*)$/) || [];
   session.staff = await staffList(); // permissions (RRA-002) read this
+  setJobViews((await data.settings()).jobViews);
+  if (!name) name = homeRoute();
   // RRA-090: this phone's person was removed from the team. Lock it.
   if (profile.role !== 'owner' && profile.iid && (await data.settings()).removed?.[profile.iid]) {
     await access.wipeAccess(); profile = null; session.profile = null; location.hash = ''; location.reload(); return;
@@ -850,15 +944,21 @@ async function route() {
   if (isHost()) await adminPayKeyCheck();
   await payFlags();
   renderSide();
+  applyTabs();
   const at = location.hash;
-  await (routes[name] || routes.recipes)(arg ? decodeURIComponent(arg) : undefined);
+  if (jobAreas() && ROUTE_JOB[name] && !jobAllows(ROUTE_JOB[name])) {
+    setChrome({ tab: '', back: true }); setTitle('Not part of your job');
+    view.innerHTML = `<div class="empty">🔒 This part of the app isn't used by your job (${esc(myStaff()?.position || 'Staff')}).<br><span class="small">The Admin sets what each job sees in Settings → People → Job titles.</span></div><a class="btn block" href="#/${homeRoute()}">Go to my start screen</a>`;
+    return;
+  }
+  await (routes[name] || routes[homeRoute()] || routes.recipes)(arg ? decodeURIComponent(arg) : undefined);
   // RRA-078: swap conflicts for managers, and a manager's question for the requester.
-  if (location.hash === at && !dlg.open && $('#splash').hidden && (await swapPopups().catch(() => false) || await reportPopups().catch(() => false) || await eventPopups().catch(() => false)) && location.hash === at) (routes[name] || routes.recipes)(arg ? decodeURIComponent(arg) : undefined);
+  if (location.hash === at && !dlg.open && $('#splash').hidden && (await swapPopups().catch(() => false) || await timeOffPopups().catch(() => false) || await reportPopups().catch(() => false) || await eventPopups().catch(() => false)) && location.hash === at) (routes[name] || routes.recipes)(arg ? decodeURIComponent(arg) : undefined);
   // A slow screen can finish after a quicker tap: show what the address says.
   if (location.hash !== at && !dlg.open) route();
 }
 
-$('#btn-back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/recipes'));
+$('#btn-back').onclick = () => (history.length > 1 ? history.back() : (location.hash = '#/' + homeRoute()));
 $('#btn-bell').onclick = () => { location.hash = '#/board'; };
 // RRA-114: Orders (POS) in the menu opens the Orders popup (Seating and the current orders).
 document.addEventListener('click', (e) => { const a = e.target.closest('a[data-pospop]'); if (!a || !profile) return; e.preventDefault(); posMenu(); });
@@ -901,20 +1001,30 @@ async function boot() {
   if (!boot.wired) {
     boot.wired = true;
     if (access.can(profile, 'invite')) sync.onInbox(onRequest);
+    sync.onInboxGone(requestGone);
+    openDoor();
     sync.start(profile, () => { if (location.hash.startsWith('#/settings')) route(); });
     data.onChange((coll, remote) => { if (remote) debounceRoute(); });
     data.onChange(() => updateBadge());
     startPickups(); // RRA-124: order-up alerts
+    startAlerts(); // RRA-137: badges for new work
   }
   // RRA-087: add starter data only after the shared data has arrived, so a
   // second Admin device (an iPad) never adds it all a second time.
-  if (!sync.enabled() || await sync.whenSynced()) {
-    await data.seed({ shared: sync.enabled(), host: profile.role === 'owner' });
-    await applyMenu({ shared: sync.enabled(), host: profile.role === 'owner' });
-    await applyVendors({ shared: sync.enabled(), host: profile.role === 'owner' });
-    await applySupplies({ shared: sync.enabled(), host: profile.role === 'owner' });
+  // RRA-142: if the shared data takes longer than 8 seconds to load (a big
+  // team, a slow connection), the starter data and menu updates still run as
+  // soon as it has loaded, instead of waiting for the next full restart.
+  const starters = async () => {
+    const opt = { shared: sync.enabled(), host: profile.role === 'owner' };
+    await data.seed(opt);
+    const added = await applyMenu(opt);
+    await applyVendors(opt);
+    await applySupplies(opt);
+    if (added?.dishes || added?.sections) toast(`Menu update: ${[added.sections ? `${added.sections} new section${added.sections > 1 ? 's' : ''}` : '', added.dishes ? `${added.dishes} new item${added.dishes > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ')} added to Recipes`);
     if (canChange('settings')) setTimeout(() => offerDedupe(), 1500);
-  }
+  };
+  if (!sync.enabled() || await sync.whenSynced()) await starters();
+  else sync.whenSynced(36e5).then((ok) => { if (ok) starters().then(() => { if (/^#\/(recipes?|pos|poscheck|list)/.test(location.hash)) route(); }); });
   await noticeGate();
   await homeTip();
   if (incoming && access.parse(incoming)?.kind === 'req') { location.hash = '#/team'; return teamView(incoming); }

@@ -1,6 +1,7 @@
 // Settings (RRA-029) and roles and permissions (RRA-002).
 
 import * as data from './data.js';
+import { sectionStation } from './drinks.js';
 import { $, $$, esc, view, sheet, toast, setTitle, setChrome, session, THEMES, getTheme, setTheme, oneOpen, LS } from './ui.js';
 import { AREAS, PAY_AREAS, ROLE_DEFAULTS, level, canChange, canSee, isHost } from './perms.js';
 import { PAY_PRESETS, payRules, rulesText } from './lounge.js';
@@ -39,6 +40,7 @@ export async function settingsView() {
     ${full ? `<button class="acc-head${so === 'people' ? ' open' : ''}" type="button" data-g="people"><span class="grow">People</span><span class="meta">${counts.staff} staff</span></button>
     <div class="group acc-body"${so === 'people' ? '' : ' hidden'}>
       <a class="row" href="#/staff"><span class="grow">Staff</span><span class="meta">${counts.staff}</span></a>
+      <a class="row" href="#/jobtitles"><span class="grow">Job titles</span><span class="meta">Bartender, Busser…</span></a>
       <a class="row" href="#/roles"><span class="grow">Roles and permissions</span></a>
       ${canChange('schedule') ? '<a class="row" href="#/shifts"><span class="grow">Shift times</span><span class="meta">Schedule buttons</span></a>' : ''}
       ${canAccess(session.profile, 'invite') ? '<a class="row" href="#/team"><span class="grow">Invite and approve phones</span></a>' : ''}
@@ -58,7 +60,7 @@ export async function settingsView() {
       <div class="row"><span class="grow">Food cost target</span><span class="meta">${s.foodCostTarget || 30}%</span>${edit ? '<button class="btn plain small" id="target" type="button">Change</button>' : ''}</div>
       <div class="row"><span class="grow">Shared team data</span><span class="meta">${esc(syncLabel())}</span></div>
       ${edit ? '<a class="row" href="#/dedupe"><span class="grow">Clean up duplicates</span></a>' : ''}
-      ${isHost() ? '<a class="row nav" href="#/cleardata"><span class="grow"><span class="title">Clear test data</span><span class="sub">Erase practice clock-ins, checks, messages and more for the whole team</span></span></a>' : ''}
+      ${isHost() ? '<a class="row nav" href="#/cleardata"><span class="grow"><span class="title">Clear test data</span><span class="sub">Erase sales, time logs, messages and more for the whole team. Stock is never touched</span></span></a>' : ''}
       <div class="row"><span class="grow">Lock after no use</span><span class="meta">${INACTIVITY_DAYS} days</span></div>
       <a class="row" href="#/about"><span class="grow">About</span></a>
       <a class="row" href="#/report"><span class="grow">Report a problem</span></a>
@@ -136,10 +138,19 @@ export async function listView(key) {
   const arr = s[key] || [];
   const edit = canChange('settings');
   view.innerHTML = `
-    <div class="group">${arr.map((n, i) => `<div class="row">${edit ? `<button class="rm" type="button" data-rm="${i}" aria-label="Remove ${esc(n)}">−</button>` : ''}<span class="grow">${esc(n)}</span></div>`).join('') || '<div class="row muted">None yet.</div>'}</div>
+    <div class="group">${arr.map((n, i) => `<div class="row">${edit ? `<button class="rm" type="button" data-rm="${i}" aria-label="Remove ${esc(n)}">−</button>` : ''}<span class="grow">${esc(n)}</span>${key === 'sections' ? stationBtn(n, s, edit) : ''}</div>`).join('') || '<div class="row muted">None yet.</div>'}</div>
+    ${key === 'sections' ? '<p class="muted small">Send to: where each section\'s tickets go when an order is sent. Beer, wine, liquor and mixed drinks always go to the Bar. A single dish can be set as a drink in Recipes.</p>' : ''}
     ${edit ? `<label class="field"><span>Add</span><input type="text" id="n"></label><button class="btn tonal block" id="add" type="button">+ Add</button>` : ''}`;
   $('#add')?.addEventListener('click', async () => { const n = $('#n').value.trim(); if (!n || arr.includes(n)) return; s[key] = [...arr, n]; await data.saveSettings(s); listView(key); });
+  $$('[data-st]', view).forEach((b) => { b.onclick = async () => { const n = b.dataset.st; const cur = sectionStation(n, s).station; s.sectionStation = { ...(s.sectionStation || {}), [n]: cur === 'Bar' ? 'Kitchen' : 'Bar' }; await data.saveSettings(s); listView(key); }; });
   $$('[data-rm]', view).forEach((b) => { b.onclick = async () => { s[key] = arr.filter((_, i) => i !== +b.dataset.rm); await data.saveSettings(s); listView(key); }; });
+}
+
+// RRA-135: a section's "Send to" button. Alcohol sections are fixed on Bar.
+function stationBtn(n, s, edit) {
+  const { station, fixed } = sectionStation(n, s);
+  const label = `${station === 'Bar' ? '🍺 Bar' : '🍳 Kitchen'}`;
+  return fixed || !edit ? `<span class="meta">${label}${fixed ? ' · alcohol' : ''}</span>` : `<button class="btn plain small" type="button" data-st="${esc(n)}" aria-label="Send ${esc(n)} to">${label}</button>`;
 }
 
 // After a manager is moved down (RRA-066): a new pay key for the Admin

@@ -7,6 +7,7 @@ import { canChange, canSee } from './perms.js';
 import { printButtons, wirePrint } from './pdf.js';
 import { loungeButton } from './lounge.js';
 import { dishPhoto } from './menu.js';
+import { KINDS, sectionKind, drinkKind, isAlcohol, pours } from './drinks.js';
 
 const CATEGORIES = ['Rub', 'Sauce', 'Dressing', 'Marinade', 'Other'];
 const all = async () => (await data.list('recipe')).sort(data.byName);
@@ -21,6 +22,7 @@ export async function recipesView() {
   $('#new-recipe')?.addEventListener('click', () => recipeDialog(null, kind));
 
   const list = await all();
+  STOCK_CACHE = await data.list('stock');
   const settings = await data.settings();
   const q = (recipesView.q || '').toLowerCase();
   const match = (r) => !q || [r.name, r.category, r.section, ...(r.ingredients || []).map((i) => i.item)].join(' ').toLowerCase().includes(q);
@@ -28,6 +30,9 @@ export async function recipesView() {
   const order = kind === 'dish' ? [...(settings.sections || []), 'Other'] : CATEGORIES;
   const groups = {};
   for (const r of shown) (groups[(kind === 'dish' ? r.section : r.category) || 'Other'] ||= []).push(r);
+  // RRA-135: every menu section shows, even before it has a dish, so "+ Add to"
+  // works for a new section like Draft Beer.
+  if (kind === 'dish' && !q && edit) for (const g of settings.sections || []) groups[g] ||= [];
   // Dishes from the menu keep the menu's order; others follow by name.
   for (const g of Object.values(groups)) g.sort((a, b) => (a.menuOrder ?? 1e6) - (b.menuOrder ?? 1e6) || data.byName(a, b));
   const keys = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99);
@@ -93,6 +98,7 @@ export async function recipeView(id) {
   const r = await data.get('recipe', id);
   if (!r) { location.hash = '#/recipes'; return; }
   const list = await all();
+  STOCK_CACHE = await data.list('stock');
   const uses = (r.uses || []).map((u) => list.find((x) => x.id === u)).filter(Boolean);
   const usedIn = list.filter((x) => (x.uses || []).includes(r.id));
   const edit = canChange('recipes');
@@ -107,10 +113,12 @@ export async function recipeView(id) {
     <div class="recipe">
       ${dishPhoto(r) ? `<img src="${esc(dishPhoto(r))}" alt="" style="width:100%;max-height:260px;object-fit:cover;border-radius:var(--radius);margin-bottom:8px">` : ''}
       <p><span class="chip">${r.kind === 'house' ? esc(r.category || 'House recipe') : esc(r.section || 'Dish')}</span>${r.kind === 'house' ? ` ${chip('Sub recipe', 'purple')}` : ''}</p>
+      ${r.kind === 'dish' && r.desc ? `<p class="muted">${esc(r.desc)}</p>` : ''}
       ${r.kind === 'house' && (r.yield || r.storage) ? `<div class="facts">
         <div><b>Yield</b>${esc(r.yield || '—')}</div><div><b>Storage</b>${esc(r.storage || '—')}</div></div>` : ''}
       ${uses.length ? `<h2>Uses house recipes</h2><div class="group">${uses.map((u) => `<a class="row" href="#/recipe/${u.id}"><span class="grow">${esc(u.name)}</span>${chip('Sub recipe', 'purple')}</a>`).join('')}</div>` : ''}
       <h2>${r.kind === 'dish' ? 'Build' : 'Ingredients'}</h2>
+      ${drinkView(r)}
       <div class="card"><ul class="ing">${(r.ingredients || []).map((i) => `<li><span class="qty">${esc(i.qty)}</span><span style="flex:1">${esc(i.item)}${subOf(i.item) ? ` <a href="#/recipe/${subOf(i.item).id}">${chip('Sub recipe', 'purple')}</a>` : ''}</span>${canSee('costs') && i.cost ? `<span class="muted small">${data.money(i.cost)}</span>` : ''}</li>`).join('')}</ul></div>
       ${showCost ? `<div class="card small"><b>Plate cost ${data.money(cost)}</b>${r.price ? ` · menu price ${data.money(r.price)} · <b>food cost ${Math.round((cost / r.price) * 100)}%</b>` : ''}</div>` : ''}
       <h2>Step by step</h2>
@@ -193,6 +201,17 @@ export async function printView(id) {
 
 // ------------------------------------------------------------ editor
 
+// RRA-135: what kind of drink it is, and which bottles each one counts down.
+let STOCK_CACHE = [];
+function drinkView(r) {
+  if (r.kind !== 'dish') return '';
+  const k = drinkKind(r);
+  if (!k) return '';
+  const ps = pours(r, STOCK_CACHE);
+  return `<p>${chip(KINDS()[k] || 'Drink', isAlcohol(k) ? 'orange' : 'blue')} ${isAlcohol(k) ? chip('21+ · bar ticket', 'gray') : ''}${r.hhPrice ? ` ${chip('Happy hour ' + data.money(r.hhPrice), 'green')}` : ''}</p>
+    ${ps.length ? `<p class="muted small">Each one sold counts down: ${ps.map((p) => `${esc(p.name)} ${p.used < 0.1 ? (p.used * 100).toFixed(1) + '%' : Math.round(p.used * 100) + '%'} of a ${esc(STOCK_CACHE.find((s) => s.id === p.id)?.unit || 'unit')}`).join(', ')}</p>` : isAlcohol(k) ? '<p class="muted small">No pours linked to Stock yet. Write them as ingredients (like 1.5 oz Well vodka) to count bottles down.</p>' : ''}`;
+}
+
 async function photoFrom(file) {
   const img = await new Promise((resolve, reject) => {
     const i = new Image();
@@ -213,9 +232,10 @@ export async function recipeDialog(existing, kind = 'house', section = null) {
   const r = existing ? structuredClone(existing) : { kind, category: 'Sauce', section: section || (settings.sections || [])[0], ingredients: [{}, {}], steps: [], uses: [], comments: [] };
   const house = (await all()).filter((x) => x.kind === 'house' && x.id !== r.id);
   const costs = canSee('costs');
+  const stock = (await data.list('stock')).sort(data.byName);
   const ingRow = (i = {}) => `
     <div class="ing-edit${costs ? ' with-cost' : ''}"><input type="text" placeholder="Qty" value="${esc(i.qty || '')}" aria-label="Quantity">
-    <input type="text" placeholder="Ingredient" value="${esc(i.item || '')}" aria-label="Ingredient">
+    <input type="text" placeholder="Ingredient" value="${esc(i.item || '')}" aria-label="Ingredient" list="r-stock">
     ${costs ? `<input type="text" inputmode="decimal" placeholder="$" value="${esc(i.cost || '')}" aria-label="Cost">` : ''}
     <button type="button" aria-label="Remove">×</button></div>`;
   const saved = await sheet({
@@ -230,10 +250,17 @@ export async function recipeDialog(existing, kind = 'house', section = null) {
       </div>
       <div id="dish-only-1">
         <label class="field"><span>Menu section</span><select id="r-sec">${[...(settings.sections || []), 'Other'].map((c) => `<option ${c === r.section ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
-        <label class="field"><span>Photo</span><input type="file" id="r-photo" accept="image/*"></label>
-        ${r.photo ? `<div id="r-photo-prev"><img src="${r.photo}" alt="" style="width:120px;border-radius:8px"> <button type="button" class="btn plain small" id="r-photo-del">Remove photo</button></div>` : ''}
+        <label class="field"><span>${dishPhoto(r) ? 'Replace photo' : 'Photo'}</span><input type="file" id="r-photo" accept="image/*"></label>
+        ${dishPhoto(r) ? `<div id="r-photo-prev"><img src="${esc(dishPhoto(r))}" alt="" style="width:120px;border-radius:8px">${r.photo ? ' <button type="button" class="btn plain small" id="r-photo-del">Remove photo</button>' : ' <span class="muted small">Standard picture</span>'}</div>` : ''}
+        <label class="field"><span>Description (optional)</span><input type="text" id="r-desc" value="${esc(r.desc || '')}" placeholder="e.g. Low-carb light lager"></label>
+        <label class="field"><span>Drink</span><select id="r-drink">
+          <option value="">${esc(sectionKind(r.section) ? `Same as the section (${KINDS()[sectionKind(r.section)]})` : 'Same as the section (food)')}</option>
+          <option value="food" ${r.drink === 'food' ? 'selected' : ''}>Not a drink (food)</option>
+          ${Object.entries(KINDS()).map(([k, n]) => `<option value="${k}" ${r.drink === k ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+        <p class="muted small drink-hint" style="margin:-4px 4px 8px">Beer, wine, liquor and mixed drinks go to the bar and ask for a 21+ ID check. For pours, write the amount (like 1.5 oz) and pick the bottle from Stock, so each drink sold counts it down.</p>
       </div>
       <div class="field"><span class="muted small" style="margin-left:4px">Ingredients and quantities${costs ? ' (cost per plate is optional)' : ''}<span class="dish-opt"> · optional for menu items like sauces and drinks</span></span>
+        <datalist id="r-stock">${stock.map((s) => `<option value="${esc(s.name)}">`).join('')}</datalist>
         <div id="r-ings" style="margin-top:6px">${(r.ingredients.length ? r.ingredients : [{}]).map(ingRow).join('')}</div>
         <button class="btn plain small" id="r-add-ing" type="button">+ Add ingredient</button>
       </div>
@@ -243,7 +270,10 @@ export async function recipeDialog(existing, kind = 'house', section = null) {
         <label class="field" style="margin:0"><span>Storage</span><input type="text" id="r-storage" value="${esc(r.storage || '')}" placeholder="e.g. Walk-in, 7 days"></label>
       </div>
       <div id="dish-only">
-        ${costs ? `<label class="field"><span>Menu price</span><input type="text" inputmode="decimal" id="r-price" value="${esc(r.price || '')}" placeholder="e.g. 13.99"></label>` : ''}
+        ${costs ? `<div class="facts" style="background:none">
+          <label class="field" style="margin:0"><span>Menu price</span><input type="text" inputmode="decimal" id="r-price" value="${esc(r.price || '')}" placeholder="e.g. 13.99"></label>
+          <label class="field" style="margin:0"><span>Happy hour price</span><input type="text" inputmode="decimal" id="r-hh" value="${esc(r.hhPrice || '')}" placeholder="optional"></label>
+        </div>` : ''}
         <div class="section-label" style="margin-left:4px">Uses house recipes</div>
         <div class="checks">${house.length ? house.map((h) => `<label><input type="checkbox" value="${h.id}" ${(r.uses || []).includes(h.id) ? 'checked' : ''}>${esc(h.name)}</label>`).join('') : '<p class="muted small">No house recipes yet.</p>'}</div>
       </div>
@@ -269,7 +299,7 @@ export async function recipeDialog(existing, kind = 'house', section = null) {
       wireRemove();
       $('#r-add-ing', el).onclick = () => { $('#r-ings', el).insertAdjacentHTML('beforeend', ingRow()); wireRemove(); $('#r-ings .ing-edit:last-child input', el).focus(); };
       $('#r-photo', el).onchange = async (e) => { const f = e.target.files[0]; if (f) { r.photo = await photoFrom(f); toast('Photo added'); } };
-      $('#r-photo-del', el)?.addEventListener('click', () => { r.photo = ''; $('#r-photo-prev', el).remove(); });
+      $('#r-photo-del', el)?.addEventListener('click', () => { r.photo = ''; $('#r-photo-prev', el).remove(); toast('Photo removed. The standard picture shows, if there is one.'); });
       api.onRight = () => {
         const name = $('#r-name', el).value.trim();
         const ingredients = $$('.ing-edit', el).map((row) => { const [q, i, c] = $$('input', row); return { qty: q.value.trim(), item: i.value.trim(), cost: c ? c.value.trim().replace('$', '') : undefined }; }).filter((i) => i.item);
@@ -288,6 +318,9 @@ export async function recipeDialog(existing, kind = 'house', section = null) {
           yield: house ? $('#r-yield', el).value.trim() : undefined,
           storage: house ? $('#r-storage', el).value.trim() : undefined,
           price: !house && $('#r-price', el) ? $('#r-price', el).value.trim().replace('$', '') : r.price,
+          hhPrice: !house && $('#r-hh', el) ? $('#r-hh', el).value.trim().replace('$', '') || undefined : r.hhPrice,
+          drink: house ? undefined : $('#r-drink', el).value || undefined,
+          desc: house ? undefined : $('#r-desc', el).value.trim() || undefined,
           photo: house ? '' : r.photo || '',
           uses: house ? [] : $$('#dish-only input:checked', el).map((c) => c.value),
           comments: comment ? [...(r.comments || []), { by: session.profile.name, at: Date.now(), text: comment }] : r.comments || [],

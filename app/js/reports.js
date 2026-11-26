@@ -74,6 +74,19 @@ export async function reportsView() {
 
 // On opening the app: a reply to my report, or (for the Admin and managers)
 // a new report or an answer from the person who reported it.
+// RRA-137: reports with something new for this phone (the same ones reportPopups shows).
+export async function unseenReports() {
+  const seen = LS.get('repSeen', {});
+  let n = 0;
+  for (const p of await myReports()) {
+    const mine = sentByMe(p);
+    if (!mine && !inReportTeam()) continue;
+    const last = Math.max(mine ? 0 : p.at, ...(p.replies || []).filter(notMine).map((r) => r.at));
+    if (last && (seen[p.id] || 0) < last) n++;
+  }
+  return n;
+}
+
 export async function reportPopups() {
   if (location.hash.startsWith('#/reports')) return false;
   const seen = LS.get('repSeen', {});
