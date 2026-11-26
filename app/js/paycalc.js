@@ -52,7 +52,8 @@ export function ptsOf(st, pr, P) {
   if ((st.role || 'staff') !== 'staff' || (pr?.type || 'hourly') !== 'hourly') return 0; // managers, chefs, salaried: no tips
   const R = P.tipRules;
   if (deptOf(st) === 'Kitchen') return R.kitchen ? +R.kitchenPts || 0 : 0;
-  const key = Object.keys(R.pts).find((k) => k.toLowerCase() === String(st.position || '').toLowerCase());
+  const pos = String(st.position || '').toLowerCase().trim();
+  const key = Object.keys(R.pts).find((k) => k.toLowerCase() === pos) || Object.keys(R.pts).find((k) => pos.startsWith(k.toLowerCase() + ' ')); // "Host" covers "Host stand"
   return key ? +R.pts[key] : 0;
 }
 

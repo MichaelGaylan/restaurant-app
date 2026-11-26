@@ -9,6 +9,8 @@ import { printButtons, wirePrint } from './pdf.js';
 
 const items = async () => (await data.list('stock')).sort((a, b) => (a.group || '').localeCompare(b.group || '') || data.byName(a, b));
 const vendors = async () => (await data.list('vendor')).sort(data.byName);
+// RRA-135: pours leave part bottles (e.g. 2.9556); show two decimals at most.
+const qtyText = (n) => (n === '' || n == null ? '' : String(+(+n || 0).toFixed(2)));
 const isLow = (s) => +s.par > 0 && +s.onHand < +s.par;
 const need = (s) => Math.max(0, +s.par - +s.onHand);
 // Status chip (RRA-051): In stock green, Low stock orange.
@@ -60,7 +62,7 @@ export async function stockView(forceEdit) {
           <td>${editing ? `<button class="rm" type="button" data-rm="${s.id}" aria-label="Remove ${esc(s.name)}">−</button> <span class="link" data-edit="${s.id}">${esc(s.name)}</span>` : esc(s.name)}</td>
           <td>${isFood(s.group) ? chip('Ingredient', 'blue') : chip('Supply', 'gray')}</td>
           <td>${esc(s.unit)}</td>
-          <td class="num">${!editing && change ? `<span class="stepper"><button type="button" data-d="-1">−</button><b>${esc(s.onHand)}</b><button type="button" data-d="1">+</button></span>` : esc(s.onHand)}</td>
+          <td class="num">${!editing && change ? `<span class="stepper"><button type="button" data-d="-1">−</button><b>${esc(qtyText(s.onHand))}</b><button type="button" data-d="1">+</button></span>` : esc(qtyText(s.onHand))}</td>
           <td class="num">${+s.par ? esc(s.par) : '—'}</td>
           <td>${status(s)}</td>
           <td>${esc(vName(s.vendor)) || '<span class="muted">—</span>'}</td>
@@ -85,8 +87,8 @@ export async function stockView(forceEdit) {
           <span class="sub">${+s.par ? `Par ${esc(s.par)} ${esc(s.unit)}` : 'No par set'}${s.vendor ? ` · ${esc(vs.find((v) => v.id === s.vendor)?.name || '')}` : ''}
           ${+s.par ? ` ${status(s)}` : ''}</span></span>
         ${editing ? '' : change
-          ? `<span class="stepper"><button type="button" data-d="-1">−</button><b>${esc(s.onHand)}</b><button type="button" data-d="1">+</button></span>`
-          : `<span class="meta">${esc(s.onHand)} ${esc(s.unit)}</span>`}
+          ? `<span class="stepper"><button type="button" data-d="-1">−</button><b>${esc(qtyText(s.onHand))}</b><button type="button" data-d="1">+</button></span>`
+          : `<span class="meta">${esc(qtyText(s.onHand))} ${esc(s.unit)}</span>`}
       </div>`).join('')}</div>`).join('') || '<div class="empty">No stock items match.</div>'}
     ${editing ? '<button class="btn tonal block" id="add" type="button">+ Add item</button>' : ''}
     <p class="muted small center">${editing ? 'Tap an item to change its par, unit or vendor. Tap the red button to remove one you no longer stock.'
@@ -114,7 +116,7 @@ export async function stockView(forceEdit) {
       const s = dirty[row.dataset.id] || list.find((x) => x.id === row.dataset.id);
       s.onHand = Math.max(0, +s.onHand + +b.dataset.d);
       dirty[s.id] = s;
-      $('b', row).textContent = s.onHand;
+      $('b', row).textContent = qtyText(s.onHand);
       showDirty();
     };
   });
@@ -179,7 +181,7 @@ export async function neededView() {
   view.innerHTML = `${tabs('needed')}
     <p class="muted small">Fills itself from the latest stock count: everything below par.</p>
     <div class="group">${low.map((s) => `<div class="row"><span class="grow"><span class="title">${esc(s.name)}</span>
-      <span class="sub">On hand ${esc(s.onHand)} · par ${esc(s.par)}${s.vendor ? ` · ${esc(vs.find((v) => v.id === s.vendor)?.name || '')}` : ''}</span></span>
+      <span class="sub">On hand ${esc(qtyText(s.onHand))} · par ${esc(s.par)}${s.vendor ? ` · ${esc(vs.find((v) => v.id === s.vendor)?.name || '')}` : ''}</span></span>
       <span class="meta"><b>Need ${need(s)} ${esc(s.unit)}</b></span></div>`).join('') || '<div class="row muted">Nothing below par.</div>'}</div>
     ${low.length && canSee('orders') ? '<a class="btn block" href="#/orders">Build order guides</a>' : ''}`;
   wireTabs();

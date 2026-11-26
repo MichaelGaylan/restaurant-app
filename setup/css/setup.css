@@ -45,3 +45,16 @@
 .rsw-app img, .rsw-app i { width: 56px; height: 56px; border-radius: 13px; display: block; }
 .rsw-app.ghost i { background: rgba(255,255,255,.25); }
 .rsw-app span { max-width: 70px; white-space: nowrap; overflow: hidden; }
+
+/* Menu step (RSW-020) */
+.rsw-on { color: var(--accent); font-weight: 700; }
+.rsw-sec { padding-top: 10px; }
+.rsw-sec-head, .rsw-item { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.rsw-sec-head input { flex: 1; min-width: 0; font-weight: 600; }
+.rsw-sec-head select { flex: none; max-width: 42%; }
+.rsw-item .rsw-name { flex: 1; min-width: 0; }
+.rsw-item .rsw-price { flex: none; width: 72px; text-align: right; }
+.rsw-sec input, .rsw-sec select { font: inherit; font-size: 16px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--sep); background: var(--bg); color: var(--text); } /* 16px: no zoom on iPhone */
+.rsw-x { flex: none; width: 32px; height: 32px; font-size: 1.3rem; color: var(--text-2); }
+.rsw-stock summary { cursor: pointer; padding: 2px 0; }
+.rsw-stock textarea, #pm { width: 100%; font: inherit; font-size: 16px; box-sizing: border-box; }

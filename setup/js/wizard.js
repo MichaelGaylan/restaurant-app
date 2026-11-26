@@ -1,20 +1,28 @@
 // Restaurant Setup wizard (RSW): makes one restaurant's version of the shared
-// app. Details → Pictures → Color → Preview → Produce. Drafts are kept on this
+// app. Details → Pictures → Color → Menu → Preview → Produce. Drafts are kept on this
 // device only, so a half-done setup is still there next time.
 
 import { $, $$, esc, view, LS, toast, copy, sheet, THEMES, getTheme, setTheme } from '../../app/js/ui.js';
 import { RESERVED, slug, brandOf, brandJs, restaurantFiles } from './generate.js';
 import { zip } from './zip.js';
+import { TEMPLATES, BLANK, KINDS, fromTemplate, parseMenu, guessKind } from './menus.js';
+import { CODE_OWNER_LINE } from '../../app/js/owner.js';
 
-export const VERSION = '0.1.0';
-export const BUILD = '2026.11.22-1';
+export const VERSION = '0.2.0';
+export const BUILD = '2026.11.26-1';
 const WHATS_NEW = [
+  { version: '0.2.0', build: '2026.11.26-1', date: '2026-11-26', lines: [
+    'New Menu step: start from a Bar & grill, Pizza & Italian, Café & breakfast or Mexican menu (or empty), change any section, dish or price, or paste a menu from the restaurant\'s website. The food and bar stock list comes with it.',
+    'The preview shows the menu in Recipes and Orders.',
+    'Restaurants made here now run on the shared app 0.15.0, the same as Bootleggers Kitchen 0.14.1.',
+  ] },
   { version: '0.1.0', build: '2026.11.22-1', date: '2026-11-22', lines: [
     'First prototype: enter the restaurant details, upload a logo and app icon (the 180px icon and 32px favicon are made for you), pick an accent color, preview it on an iPhone-sized screen, then download that restaurant\'s folder.',
   ] },
 ];
 const SITE = new URL('../', location.href).href; // where the restaurants live (…/restaurant-app/)
-const STEPS = ['Details', 'Pictures', 'Color', 'Preview', 'Produce'];
+const STEPS = ['Details', 'Pictures', 'Color', 'Menu', 'Preview', 'Produce'];
+const PREVIEW = STEPS.indexOf('Preview');
 const ACCENTS = [['#c8102e', 'Red'], ['#e35205', 'Orange'], ['#b8860b', 'Gold'], ['#1f7a3a', 'Green'], ['#00778b', 'Teal'], ['#0057b8', 'Blue'], ['#5b2a86', 'Purple'], ['#3a3a3c', 'Graphite']];
 
 // ------------------------------------------------------------ drafts (IndexedDB)
@@ -27,7 +35,7 @@ const dbp = new Promise((res, rej) => {
 const tx = async (mode, fn) => { const d = await dbp; return new Promise((res, rej) => { const t = d.transaction('drafts', mode); const q = fn(t.objectStore('drafts')); t.oncomplete = () => res(q?.result); t.onerror = () => rej(t.error); }); };
 const drafts = { all: () => tx('readonly', (s) => s.getAll()), put: (d) => tx('readwrite', (s) => s.put(d)), del: (k) => tx('readwrite', (s) => s.delete(k)) };
 
-const blank = () => ({ key: 'd' + Date.now().toString(36), step: 0, restaurant: '', shortName: '', appName: '', location: '', credit: LS.get('credit', ''), id: '', idTouched: false, accent: null, iconMode: 'letter', iconBg: '#ffffff', logo: null, icon: null, video: null, updated: Date.now() });
+const blank = () => ({ key: 'd' + Date.now().toString(36), step: 0, restaurant: '', shortName: '', appName: '', location: '', credit: LS.get('credit', ''), id: '', idTouched: false, accent: null, iconMode: 'letter', iconBg: '#ffffff', logo: null, icon: null, video: null, menuKey: '', menu: [], stock: [], posChoices: {}, dishExample: '', updated: Date.now() });
 let cur = blank();
 let saveTimer;
 const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => { cur.updated = Date.now(); drafts.put(cur).catch(() => {}); }, 300); };
@@ -110,9 +118,9 @@ function wireSteps() {
 // ------------------------------------------------------------ Setup tab
 
 async function setupView() {
-  chrome(cur.step === 3 ? 'preview' : 'setup', cur.restaurant.trim() || 'New restaurant');
+  chrome(cur.step === PREVIEW ? 'preview' : 'setup', cur.restaurant.trim() || 'New restaurant');
   freeUrls();
-  const body = [detailsStep, picturesStep, colorStep, previewStep, produceStep][cur.step];
+  const body = [detailsStep, picturesStep, colorStep, menuStep, previewStep, produceStep][cur.step] || detailsStep;
   view.innerHTML = stepper() + '<div id="step"></div>' + navBtns();
   await body($('#step'));
   wireSteps();
@@ -219,6 +227,88 @@ function colorStep(el) {
   $('#acc-hex', el) && ($('#acc-hex', el).onchange = (e) => { const v = e.target.value.trim(); if (/^#?[0-9a-f]{6}$/i.test(v)) { const c = v.startsWith('#') ? v : '#' + v; cur.lastAccent = c; set(c.toLowerCase()); } else toast('Use a 6-digit color code like #c8102e'); });
 }
 
+// ------------------------------------------------------------ menu (RSW-020)
+
+const dishCount = () => (cur.menu || []).reduce((n, m) => n + m.items.length, 0);
+async function useTemplate(t, el) {
+  if (cur.menuEdited && dishCount()) {
+    const ok = await sheet({ title: t.name, left: 'Cancel', right: 'Replace', body: `<p>Replace the menu you have now (${dishCount()} dishes) with the ${esc(t.name)} menu? Your changes to it are lost.</p>` });
+    if (!ok) return;
+  }
+  Object.assign(cur, fromTemplate(t), { menuEdited: false });
+  save(); menuStep(el);
+}
+function menuStep(el) {
+  cur.menu = cur.menu || []; cur.stock = cur.stock || [];
+  const kindSel = (k) => KINDS.map(([v, t]) => `<option value="${v}"${v === (k || '') ? ' selected' : ''}>${t}</option>`).join('');
+  el.innerHTML = `
+    <div class="section-label">Start from</div>
+    <div class="group">${[...TEMPLATES, BLANK].map((t) => `<button class="row nav" type="button" data-tpl="${t.key}"><span class="grow"><span class="title">${esc(t.name)}${cur.menuKey === t.key ? ' <span class="rsw-on">✓</span>' : ''}</span><span class="sub">${esc(t.blurb)}</span></span></button>`).join('')}</div>
+    <button class="btn tonal block" id="m-paste" type="button" style="margin-top:10px">Paste a menu</button>
+    <p class="small muted">Typical prices to start from: check them with the restaurant. A dish with no price stays in Recipes but doesn't show in Orders.</p>
+    <div class="section-label">Menu${cur.menu.length ? ` · ${dishCount()} dishes` : ''}</div>
+    ${cur.menu.length ? '' : '<p class="small muted">No starter menu: the restaurant adds its dishes in Recipes.</p>'}
+    ${cur.menu.map((m, si) => `
+      <div class="card rsw-sec" data-si="${si}">
+        <div class="rsw-sec-head">
+          <input type="text" class="rsw-sec-name" value="${esc(m.section)}" placeholder="Section name" aria-label="Section name">
+          <select class="rsw-kind" aria-label="What this section holds">${kindSel(m.kind)}</select>
+          <button class="icon-btn rsw-x" type="button" data-rm-sec aria-label="Remove section">×</button>
+        </div>
+        ${m.items.map(([n, p], ii) => `<div class="rsw-item" data-ii="${ii}">
+          <input type="text" class="rsw-name" value="${esc(n)}" placeholder="Dish name" aria-label="Dish name">
+          <input type="text" class="rsw-price" value="${esc(p)}" placeholder="0.00" inputmode="decimal" aria-label="Price">
+          <button class="icon-btn rsw-x" type="button" data-rm-item aria-label="Remove dish">×</button></div>`).join('')}
+        <button class="btn plain small" type="button" data-add-item>+ Add dish</button>
+      </div>`).join('')}
+    <button class="btn tonal block" id="m-add-sec" type="button">+ Add section</button>
+    <div class="section-label">Starter stock (food and bar)</div>
+    ${cur.stock.length ? cur.stock.map((g, gi) => `
+      <details class="card rsw-stock" data-gi="${gi}"><summary><b>${esc(g.group)}</b> <span class="muted small">${g.items.length} items</span></summary>
+        <label class="field"><span>One item per line: name, unit</span><textarea rows="${Math.min(12, g.items.length + 1)}" class="rsw-stock-t">${esc(g.items.map(([n, u]) => (u ? `${n}, ${u}` : n)).join('\n'))}</textarea></label>
+      </details>`).join('') : '<p class="small muted">None: the restaurant adds its food and bar items in Stock.</p>'}
+    <p class="small muted">Cleaning, paper and to-go, smallwares, linens and common vendors are added for every restaurant.</p>`;
+
+  const touched = () => { cur.menuEdited = true; save(); };
+  $$('[data-tpl]', el).forEach((b) => { b.onclick = () => useTemplate([...TEMPLATES, BLANK].find((t) => t.key === b.dataset.tpl), el); });
+  $$('.rsw-sec', el).forEach((c) => {
+    const m = cur.menu[+c.dataset.si];
+    $('.rsw-sec-name', c).oninput = (e) => { m.section = e.target.value; touched(); };
+    $('.rsw-sec-name', c).onchange = (e) => { if (!m.kind && guessKind(e.target.value)) { m.kind = guessKind(e.target.value); $('.rsw-kind', c).value = m.kind; touched(); } };
+    $('.rsw-kind', c).onchange = (e) => { m.kind = e.target.value; touched(); };
+    $('[data-rm-sec]', c).onclick = () => { cur.menu.splice(+c.dataset.si, 1); touched(); menuStep(el); };
+    $$('.rsw-item', c).forEach((r) => {
+      const it = m.items[+r.dataset.ii];
+      $('.rsw-name', r).oninput = (e) => { it[0] = e.target.value; touched(); };
+      $('.rsw-price', r).oninput = (e) => { it[1] = e.target.value; touched(); };
+      $('.rsw-price', r).onchange = (e) => { const n = parseFloat(e.target.value.replace(/[^0-9.]/g, '')); it[1] = Number.isFinite(n) ? n.toFixed(2) : ''; e.target.value = it[1]; touched(); };
+      $('[data-rm-item]', r).onclick = () => { m.items.splice(+r.dataset.ii, 1); touched(); menuStep(el); };
+    });
+    $('[data-add-item]', c).onclick = () => { m.items.push(['', '']); touched(); menuStep(el); const rows = $$(`.rsw-sec[data-si="${c.dataset.si}"] .rsw-name`, el); rows[rows.length - 1]?.focus(); };
+  });
+  $('#m-add-sec', el).onclick = () => { cur.menu.push({ section: '', kind: '', items: [['', '']] }); if (!cur.menuKey) cur.menuKey = 'own'; touched(); menuStep(el); const n = $$('.rsw-sec-name', el); n[n.length - 1]?.focus(); };
+  $$('.rsw-stock', el).forEach((d) => {
+    $('.rsw-stock-t', d).onchange = (e) => {
+      cur.stock[+d.dataset.gi].items = e.target.value.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const i = l.lastIndexOf(','); return i > 0 ? [l.slice(0, i).trim(), l.slice(i + 1).trim()] : [l, '']; });
+      touched(); $('summary .small', d).textContent = cur.stock[+d.dataset.gi].items.length + ' items';
+    };
+  });
+  $('#m-paste', el).onclick = async () => {
+    let text = '';
+    const how = await sheet({ title: 'Paste a menu', left: 'Cancel', body: `
+      <p class="small">Copy the menu from the restaurant's website or a PDF and paste it here. One dish per line with its price at the end. A line without a price starts a new section.</p>
+      <textarea id="pm" rows="10" placeholder="Burgers&#10;Classic Burger 12.99&#10;Bacon Cheeseburger $14.49&#10;Sides&#10;Fries 3.99"></textarea>
+      <div class="btn-row" style="margin-top:10px"><button class="btn" id="pm-rep" type="button">Replace the menu</button>${cur.menu.length ? '<button class="btn tonal" id="pm-add" type="button">Add to it</button>' : ''}</div>`,
+      onMount: ({ close, el: d }) => { const t = $('#pm', d); $('#pm-rep', d).onclick = () => { text = t.value; close('rep'); }; $('#pm-add', d) && ($('#pm-add', d).onclick = () => { text = t.value; close('add'); }); } });
+    if (!how) return;
+    const got = parseMenu(text).map((x) => ({ ...x, kind: guessKind(x.section) }));
+    const n = got.reduce((k, m) => k + m.items.length, 0);
+    if (!n) { toast('No dishes with prices found'); return; }
+    if (how === 'rep') { cur.menu = got; cur.menuKey = 'own'; } else cur.menu.push(...got);
+    touched(); menuStep(el); toast(`${n} dishes in ${got.length} section${got.length > 1 ? 's' : ''}`);
+  };
+}
+
 // ------------------------------------------------------------ preview (iPhone-sized)
 
 let pv = { theme: 'light', look: 'ios', screen: 'app' };
@@ -233,6 +323,12 @@ async function previewStep(el) {
   // The preview frame keeps its own Light/Dark choice; start it fresh each time.
   localStorage.setItem('rsw.preview.theme', JSON.stringify(pv.theme));
   localStorage.removeItem('rsw.preview.seenVersion');
+  // A different menu: start the preview's sample data fresh, so it shows only this menu.
+  if (LS.get('pvMenu', '') !== P.menuVersion) {
+    await new Promise((res) => { const q = indexedDB.deleteDatabase('rsw-preview'); q.onsuccess = q.onerror = q.onblocked = () => res(); });
+    Object.keys(localStorage).filter((k) => k.startsWith('rsw.preview.') && k !== 'rsw.preview.theme').forEach((k) => localStorage.removeItem(k));
+    LS.set('pvMenu', P.menuVersion);
+  }
   const seg = (id, opts, v) => `<div class="segmented" id="${id}">${opts.map(([k, t]) => `<button type="button" data-k="${k}" class="${v === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
   const name = P.shortName || 'Name';
   el.innerHTML = `
@@ -278,6 +374,8 @@ function produceStep(el) {
         <div><span class="muted">Home screen</span> ${esc(B.shortName)}</div>
         <div><span class="muted">Location</span> ${esc(B.location || '—')}</div>
         <div><span class="muted">Credit line</span> ${esc(B.credit || 'hidden')}</div>
+        <div><span class="muted">Menu</span> ${B.menu.length ? `${B.menu.reduce((n, m) => n + m.items.length, 0)} dishes in ${B.menu.length} sections` : 'None (added in Recipes)'}</div>
+        <div><span class="muted">Stock</span> ${B.starterStock.length ? `${B.starterStock.reduce((n, g) => n + g.items.length, 0)} food and bar items, plus supplies` : 'Supplies only'}</div>
         <div><span class="muted">Accent</span> ${B.accent ? `<i class="rsw-dot" style="background:${esc(B.accent)}"></i> ${esc(B.accent)}` : 'System blue'}</div>
         <div><span class="muted">Data space</span> ${esc(B.dbName)}</div>
         <div><span class="muted">Link</span> ${esc(link)}</div>
@@ -321,7 +419,7 @@ async function restaurantsView() {
   view.innerHTML = `
     <button class="btn block" id="new" type="button">New restaurant</button>
     <div class="section-label">On this device</div>
-    ${list.length ? `<div class="group">${list.map((d) => `<button class="row nav" type="button" data-k="${d.key}"><span class="grow"><span class="title">${esc(d.restaurant || 'Untitled')}</span><span class="sub">${d.produced ? 'Produced ' + new Date(d.produced).toLocaleDateString() : 'Draft, step ' + (d.step + 1) + ' of 5'}${d.id ? ' · ' + esc(d.id) : ''}</span></span></button>`).join('')}</div>` : '<p class="muted small">Nothing yet. Tap New restaurant to start.</p>'}
+    ${list.length ? `<div class="group">${list.map((d) => `<button class="row nav" type="button" data-k="${d.key}"><span class="grow"><span class="title">${esc(d.restaurant || 'Untitled')}</span><span class="sub">${d.produced ? 'Produced ' + new Date(d.produced).toLocaleDateString() : 'Draft, step ' + (d.step + 1) + ' of ' + STEPS.length}${d.id ? ' · ' + esc(d.id) : ''}</span></span></button>`).join('')}</div>` : '<p class="muted small">Nothing yet. Tap New restaurant to start.</p>'}
     <p class="small muted">Drafts stay on this device. Live restaurants are the folders under <b>r/</b> in the restaurant-app repo.</p>`;
   $('#new').onclick = () => { cur = blank(); save(); location.hash = '#/setup'; };
   $$('[data-k]').forEach((b) => { b.onclick = async () => {
@@ -356,6 +454,7 @@ function aboutView() {
       <p class="muted">Version ${VERSION} · build ${BUILD}</p>
       <p class="small muted">Project RSW · makes each restaurant's version of the shared restaurant app</p>
       ${LS.get('credit', '') ? `<p class="small muted">${esc(LS.get('credit', ''))}</p>` : ''}
+      ${CODE_OWNER_LINE ? `<p class="small muted">${esc(CODE_OWNER_LINE)}</p>` : ''}
     </div>
     <div class="section-label">What's new</div>
     ${WHATS_NEW.map((w) => `<div class="card small"><b>${w.version}</b> <span class="muted">· build ${w.build} · ${w.date}</span><ul>${w.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div>`).join('')}`;
@@ -367,7 +466,8 @@ function infoView() {
     <div class="card small">
       <p><b>One app, many restaurants.</b> The app itself lives once, in the <b>app</b> folder. Each restaurant is a small folder under <b>r/</b> with only its name, pictures, colors and settings. Fix the app once and every restaurant gets it the next time their phones open it.</p>
       <p><b>Separate data.</b> Each restaurant has its own data space on the phone and its own shared-data folder, named by its Restaurant ID. Two restaurants never see each other's recipes, staff or schedules, even on the same phone.</p>
-      <p><b>The steps.</b> 1 Details, 2 Pictures (the 180px home-screen icon, 192/512 Android icons and 32px favicon are made for you), 3 Color, 4 Preview on an iPhone-sized screen, 5 Produce: download the restaurant's folder.</p>
+      <p><b>The steps.</b> 1 Details, 2 Pictures (the 180px home-screen icon, 192/512 Android icons and 32px favicon are made for you), 3 Color, 4 Menu, 5 Preview on an iPhone-sized screen, 6 Produce: download the restaurant's folder.</p>
+      <p><b>Starter menu.</b> Pick the menu closest to the restaurant, then change sections, dishes and prices, or paste the restaurant's own menu (one dish per line with its price at the end; a line without a price starts a section). The menu fills Recipes and the Point of sale on the Admin's phone the first time it opens. Drink sections go to the bar ticket, and alcohol asks for a 21+ ID check. The food and bar stock list comes with the menu; cleaning, paper, smallwares and linens and the common vendors are added for every restaurant. Prices are typical starting prices: check them with the restaurant.</p>
       <p><b>After it's online.</b> The restaurant's Admin opens its link on their iPhone, adds it to the Home Screen and runs Admin setup. Shared team data (Firebase) and Report a problem emails are set up per restaurant afterward.</p>
       <p><b>Drafts.</b> Everything you type and upload here is saved on this device only, under Restaurants.</p>
     </div>`;
@@ -377,7 +477,7 @@ function infoView() {
 
 async function route() {
   const r = (location.hash.match(/^#\/([^/]+)/) || [])[1] || 'setup';
-  if (r === 'preview') { cur.step = 3; save(); location.hash = '#/setup'; return; }
+  if (r === 'preview') { cur.step = PREVIEW; save(); location.hash = '#/setup'; return; }
   ({ setup: setupView, restaurants: restaurantsView, more: moreView, about: aboutView, info: infoView }[r] || setupView)();
 }
 window.addEventListener('hashchange', route);

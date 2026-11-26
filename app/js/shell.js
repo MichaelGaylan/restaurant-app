@@ -41,6 +41,16 @@
   <main id="view" class="view"></main>
 
   <nav id="tabs" class="tabs" hidden>
+    <!-- Job views (RRA-132): Seating, Tables and Kitchen show for staff whose job uses them -->
+    <a href="#/pos" data-tab="pos" hidden>
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="12" cy="3.5" r="1.6" fill="currentColor"/><circle cx="12" cy="20.5" r="1.6" fill="currentColor"/><circle cx="3.5" cy="12" r="1.6" fill="currentColor"/><circle cx="20.5" cy="12" r="1.6" fill="currentColor"/></svg>
+      <span>Seating</span><i class="badge" data-alert="pos" hidden></i></a>
+    <a href="#/tables" data-tab="tables" hidden>
+      <svg viewBox="0 0 24 24"><path d="M3 9h18M6 9v10M18 9v10M8 5h8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+      <span>Tables</span><i class="badge" data-alert="tables" hidden></i></a>
+    <a href="#/tickets" data-tab="tickets" hidden>
+      <svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"/></svg>
+      <span>Tickets</span><i class="badge" data-alert="tickets" hidden></i></a>
     <a href="#/recipes" data-tab="recipes">
       <svg viewBox="0 0 24 24"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h10" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>
       <span>Recipes</span></a>
@@ -49,13 +59,13 @@
       <span>Prep</span></a>
     <a href="#/stock" data-tab="stock">
       <svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v9l-8 4-8-4zM4 8l8 4 8-4M12 12v9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>
-      <span>Stock</span></a>
+      <span>Stock</span><i class="badge" data-alert="stock" hidden></i></a>
     <a href="#/lounge" data-tab="lounge">
       <svg viewBox="0 0 24 24"><path d="M4 10h13v4a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM17 11h1.5a2.5 2.5 0 0 1 0 5H17M8 3c0 2 2 2 2 4M12 3c0 2 2 2 2 4" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Lounge</span><i id="tab-badge" class="badge" hidden></i></a>
+      <span>Lounge</span><i id="tab-badge" class="badge" data-alert="lounge" hidden></i></a>
     <a href="#/more" data-tab="more">
       <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>
-      <span>More</span></a>
+      <span>More</span><i class="badge" data-alert="more" hidden></i></a>
   </nav>
 
   <dialog id="dlg" class="sheet"></dialog>

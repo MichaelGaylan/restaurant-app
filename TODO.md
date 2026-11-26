@@ -3,23 +3,26 @@
 Project code: `RSW`. One shared restaurant app (from Bootleggers Kitchen) and a setup wizard that makes each restaurant's version. A fix made once in `app/` reaches every restaurant.
 
 ## 🔴 Needs you
-- [ ] RSW-010 · Turn on GitHub Pages: repo Settings → Pages → Deploy from a branch → `main` / `(root)` → Save. The prototype link is then https://michaelgaylan.github.io/restaurant-app/setup/ · Infra · S
-- [ ] RSW-011 · Code ownership: if Bootleggers paid for their app, get written confirmation (email is fine) that you can reuse the code for other restaurants before selling it. Ask who owns the code, whether you can license it to other restaurants, and that Bootleggers' recipes, menu and logo stay theirs · Safety · S
+- [ ] RSW-033 · Switch Bootleggers to its new link, https://michaelgaylan.github.io/restaurant-app/r/bootleggers/ (after this PR is merged). Same data, so it can be one phone at a time while the old app keeps working: (1) on the Admin phone open the new link in Safari, Share → Add to Home Screen, open it from the home screen and restore your Admin backup (More → Admin backup on the old app first if you don't have a recent one); the team's recipes, stock and schedules come back from shared data. (2) Each staff member adds the new link to their home screen and taps "Ask to get back in" (or gets a new invite), then deletes the old icon. (3) Tell me when everyone has moved, and I'll put a "We've moved" notice in the old app · Infra · M · added 2026-11-26
 - [ ] RSW-012 · Your © credit line: once your brand name is cleared, enter it once in the wizard (Details → © credit line). It's remembered for every new restaurant · Content · S
 - [ ] RSW-013 · Try the wizard on your iPhone once Pages is on: make a test restaurant, check the preview, download the zip · Docs · S
 
 ## 🔵 Build list
-- [ ] RSW-020 · Each restaurant's own starter menu and stock list (content file per restaurant; the shared app now starts with an empty menu and only non-food supplies) · Data · M · added 2026-11-22
 - [ ] RSW-021 · Shared data (Firebase) per restaurant: one Firebase project for all restaurants, each under `teams/<id>` (rules in `app/firestore.rules` already allow that), and the wizard fills in the config · Infra · M · added 2026-11-22
 - [ ] RSW-022 · Report a problem per restaurant: Web3Forms key field in the wizard · Infra · S · added 2026-11-22
-- [ ] RSW-027 · Until RSW-023: copy each Bootleggers release into `app/` (same batch as the Bootleggers release) · Infra · S · added 2026-11-22
-- [ ] RSW-023 · Move Bootleggers onto the shared app as `r/bootleggers/`, keeping its data names (`blg.`, `bootleggers`), as a planned switch (staff re-add the app to their home screen) · Infra · L · added 2026-11-22
+- [ ] RSW-027 · Until the switch (RSW-033) is done: copy each Bootleggers release into `app/` (same batch as the Bootleggers release). Better: make Bootleggers changes here from now on, so there's only one copy to keep · Infra · S · added 2026-11-22
 - [ ] RSW-024 · Merge the Payroll module into the shared app (after BPAY merge checklist) · Infra · L · added 2026-11-22
 - [ ] RSW-025 · Wizard "Publish" button that uploads the restaurant folder to GitHub directly, instead of download + upload · Infra · M · added 2026-11-22
 
 ## 🟡 Hold
 
 ## 🟣 Done
+### Shared app 0.15.0 · wizard 0.2.0 · build 2026.11.26-1
+- [x] RSW-031 · Shared app caught up with Bootleggers 0.8.5 to 0.14.1: clear records round 2, job titles and job views (Seating, Tables, Tickets tabs), let-me-back-in to every manager, bar drinks with the 21+ ID check and pours from Stock, happy hour, alert badges by job, time-off requests, order screen fixes, slow-sync menu fix (RRA-130..145). Shared differences kept: per-restaurant Admin keys, file paths next to `app/`, no service worker in the wizard preview · Infra · M · added 2026-11-26
+- [x] RSW-023 · Bootleggers on the shared app as `r/bootleggers/`: its own brand.js (names, logo, icons, intro video, menu with dish photos, drinks, stock, vendors, coupons, gift cards, radio, report key, Firebase) and the same data names (`blg.`, `bootleggers`, `teams/bootleggers`), so the new link reads the same team data. The switch itself is RSW-033 · Infra · L · added 2026-11-22
+- [x] RSW-020 · Starter menus: new Menu step in the wizard. Start from Bar & grill, Pizza & Italian, Café & breakfast, Mexican or empty; change sections, dishes, prices and which sections are drinks; or paste a menu (one dish per line, price at the end). The food and bar stock list comes with it; cleaning, paper, smallwares, linens and common vendors are added for every restaurant. Harbor demo now has the Bar & grill menu · Data · M · added 2026-11-22
+- [x] RSW-011 · Code ownership: **VYBEON** for now (Gaylan, 2026-11-26; may change later for legal reasons). It lives in one place, `app/js/owner.js`, and shows in About as "App software by VYBEON" in every restaurant and in the wizard. Change that one line to rename it. Each restaurant's © credit line is separate (brand.js `credit`, wizard Details) · Safety · S · added 2026-11-22
+- [x] RSW-010 · GitHub Pages is on: https://michaelgaylan.github.io/restaurant-app/setup/ · Infra · S · added 2026-11-22
 ### Shared app 0.8.0 · build 2026.11.24-1
 - [x] RSW-030 · Shared app caught up with Bootleggers 0.8.2 to 0.8.4: coupons and the military/veteran discount with the QR scanner (app/vendor/zxing), {name} tokens in notices and What's new, and seating areas sized to the room (RRA-122, 123, 128, 129). Menu, starter stock and vendors keep the shared per-restaurant approach · Infra · S · added 2026-11-24
 - [x] RSW-029 · Shared app caught up with Bootleggers 0.8.1: Music Test sound and status line, radio dial with AM/FM switch and presets, order-up alert with Admin-set delay (RRA-124..126) · Infra · S · added 2026-11-24

@@ -247,11 +247,11 @@ a.row::after, button.row.nav::after { content: ""; width: 12px; height: 12px; bo
 
 label.field { display: block; margin: 12px 0; }
 label.field > span { display: block; font-size: 0.85rem; color: var(--text-2); margin: 0 0 4px 4px; }
-input[type=text], input[type=search], input[type=password], textarea, select {
+input[type=text], input[type=date], input[type=search], input[type=password], textarea, select {
   width: 100%; font: inherit; color: var(--text); background: var(--field-bg);
   border: 1px solid var(--sep); border-radius: 10px; padding: 11px 12px;
 }
-.android input[type=text], .android input[type=search], .android input[type=password], .android textarea, .android select { border-radius: 4px; border-color: var(--text-2); background: transparent; }
+.android input[type=text], .android input[type=date], .android input[type=search], .android input[type=password], .android textarea, .android select { border-radius: 4px; border-color: var(--text-2); background: transparent; }
 textarea { min-height: 96px; resize: vertical; }
 input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
 .search { margin: 0 0 12px; }
@@ -940,3 +940,22 @@ button.row.cpn-disc:disabled { opacity: .55; cursor: default; }
 @media (min-width: 768px) { .floor { margin-left: auto; margin-right: auto; } }
 /* "+ Area" is a pill like the area tabs, not the small round "+" used elsewhere. */
 .fl-areas .add { display: inline-flex; width: auto; height: auto; border: 0; border-radius: 999px; font-size: inherit; white-space: nowrap; }
+
+/* Tables that need clearing (RRA-132) */
+.fl-t.dirty { background: color-mix(in srgb, var(--warn) 22%, var(--card-2)); box-shadow: inset 0 0 0 2px var(--warn); }
+.fl-t.dirty small { color: var(--warn); font-weight: 700; }
+.fl-dot.dirty { background: var(--warn); box-shadow: none; }
+
+/* RRA-135: drinks */
+.pos-hh { color: var(--ok); }
+.pos-cap small s { opacity: .6; font-weight: 500; }
+.pos-21 { display: inline-block; font-size: .66rem; font-weight: 800; padding: 0 4px; border-radius: 4px; background: var(--warn); color: #fff; vertical-align: 1px; }
+.pos-idok { font-weight: 700; color: var(--ok); text-transform: none; letter-spacing: 0; }
+.pos-hhbar { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--text); border-radius: 10px; padding: 7px 10px; margin-bottom: 8px; font-weight: 600; font-size: .88rem; }
+.pos-idcard { text-align: center; padding: 4px 0 10px; }
+.pos-idbig { font-size: 2.2rem; font-weight: 800; color: var(--warn); }
+.hh-days { margin-bottom: 10px; }
+
+/* RRA-141: dishes with no price yet */
+.pos-tile.noprice { opacity: .55; }
+.pos-tile.noprice .pos-cap small { color: var(--text-2); font-style: italic; }

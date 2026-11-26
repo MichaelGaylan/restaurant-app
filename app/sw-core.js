@@ -3,7 +3,7 @@
 // Bump APP_BUILD with every release of the shared app (it follows js/config.js);
 // phones notice the change and update. A restaurant's own brandVersion does the
 // same when its name or pictures change.
-const APP_BUILD = '0.8.4-2026.11.24-3';
+const APP_BUILD = '0.15.0-2026.11.26-1';
 const B = self.BRAND;
 const CACHE = `${B.teamId}-${APP_BUILD}-${B.brandVersion || 1}`;
 const APP = [
@@ -13,10 +13,11 @@ const APP = [
   'js/schedule.js', 'js/events.js', 'js/costs.js', 'js/settings.js', 'js/sync.js', 'js/audience.js', 'js/dedupe.js', 'js/reports.js',
   'js/payroll.js', 'js/paycalc.js', 'js/provider.js', 'js/pos.js', 'js/giftcards.js', 'js/music.js', 'js/cleardata.js',
   'js/coupons.js', 'js/coupons-core.js', 'vendor/zxing/zxing.min.js', // coupons (RRA-122)
+  'js/drinks.js', 'js/alerts.js', 'js/timeoff.js', 'js/owner.js',
 ].map((f) => '../../app/' + f);
 const SHELL = [
   './', 'index.html', 'brand.js', 'manifest.webmanifest',
-  B.logo, B.icon180, B.icon192, B.icon512, B.favicon,
+  B.logo, B.icon180, B.icon192, B.icon512, B.iconMaskable, B.favicon,
   ...APP,
   // The restaurant's dish pictures (brand.js menuPhotos), for the POS tiles and Recipes.
   ...new Set(Object.values(B.menuPhotos || {}).map((f) => (/[/:]/.test(f) ? f : (B.menuPhotoDir || '') + f))),
@@ -40,11 +41,12 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('message', (e) => { if (e.data === 'skipWaiting') self.skipWaiting(); });
 
-// A request waiting for approval (RRA-043): open the app on Team access.
+// Tapping a notification opens the app where it points: Team access for a
+// phone waiting for approval (RRA-043), or the screen an alert is about (RRA-137).
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-    const url = new URL('./#/team', self.registration.scope).href;
+    const url = new URL('./' + (e.notification.data?.url || '#/team'), self.registration.scope).href;
     for (const c of list) { if ('focus' in c) { c.navigate(url).catch(() => {}); return c.focus(); } }
     return self.clients.openWindow(url);
   }));

@@ -1,0 +1,12 @@
+{
+  "_how": "Messages to everyone (RRA-015). Add a new entry at the top with a new id. The app shows it once as a popup and keeps it in Notices. {name}, {restaurant} and {app} become the restaurant's names (js/brand.js).",
+  "messages": [
+    {
+      "id": "2026-11-18-welcome",
+      "date": "2026-11-18",
+      "title": "Welcome to {name} Message Board",
+      "body": "This is where your messages and notices from management will show up.",
+      "from": "Management"
+    }
+  ]
+}

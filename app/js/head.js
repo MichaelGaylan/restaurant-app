@@ -23,7 +23,7 @@
     var h = B.accent.replace('#', ''); if (h.length === 3) h = h.replace(/./g, '$&$&');
     var n = parseInt(h, 16), lum = (0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255;
     var s = d.createElement('style');
-    s.textContent = ':root{--accent:' + B.accent + ' !important;--on-accent:' + (lum > 0.6 ? '#000' : '#fff') + ' !important}';
+    s.textContent = ':root,:root[data-theme],.android,.android[data-theme]{--accent:' + B.accent + ' !important;--on-accent:' + (lum > 0.6 ? '#000' : '#fff') + ' !important}';
     d.head.appendChild(s);
   }
 })(self.BRAND);

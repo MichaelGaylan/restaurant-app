@@ -7,6 +7,8 @@ export const RESERVED = ['app', 'setup', 'r', 'preview', 'bootleggers', 'blg', '
 export const slug = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
   .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
 
+import { menuHash } from './menus.js';
+
 const js = (v) => JSON.stringify(v);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -35,8 +37,33 @@ export function brandOf(b) {
     firebase: null,
     reportKey: '',
     brandVersion: b.brandVersion || Date.now(),
+    ...menuOf(b),
   };
 }
+
+// The starter menu, drinks and stock (RSW-020), in the shape the shared app
+// reads (menu.js, drinks.js, starter-stock.js). Empty rows are left out.
+export function menuOf(b) {
+  const menu = (b.menu || []).map((s) => ({ section: String(s.section || '').trim(), kind: s.kind || '',
+    items: (s.items || []).map(([n, p]) => [String(n || '').trim(), price(p)]).filter(([n]) => n) }))
+    .filter((s) => s.section && s.items.length);
+  const stock = (b.stock || []).map((g) => ({ group: String(g.group || '').trim(),
+    items: (g.items || []).map(([n, u]) => [String(n || '').trim(), String(u || '').trim()]).filter(([n]) => n) }))
+    .filter((g) => g.group && g.items.length);
+  const drinkSections = Object.fromEntries(menu.filter((s) => s.kind).map((s) => [s.section, s.kind]));
+  const out = {
+    menuVersion: menu.length || stock.length ? 'w-' + menuHash(menu, stock) : '1',
+    menu: menu.map(({ section, items }) => ({ section, items })),
+    starterStock: stock,
+    stockStatus: stock.length ? 'Starter list from the setup wizard: check it and set a par for each item.' : '',
+  };
+  if (Object.keys(drinkSections).length) out.drinks = { sections: drinkSections, legalAge: 21, pourOz: { liquor: 1.5, wine: 5, beer: 16 },
+    choices: { liquor: { title: 'How', options: [['Rocks'], ['Neat'], ['Up'], ['Shot'], ['Double', 2, 2]] }, cocktail: { title: 'How', options: [['Rocks'], ['Up'], ['Double', 2, 2]] } } };
+  if (b.posChoices && Object.keys(b.posChoices).length) out.posChoices = b.posChoices;
+  if (b.dishExample) out.dishExample = b.dishExample;
+  return out;
+}
+const price = (p) => { const n = parseFloat(String(p ?? '').replace(/[^0-9.]/g, '')); return Number.isFinite(n) ? n.toFixed(2) : ''; };
 
 export function brandJs(B, meta = {}) {
   const line = (k, v, note = '') => `  ${k}: ${js(v)},${note ? ' // ' + note : ''}`;
@@ -76,6 +103,22 @@ ${line('adminKeys', B.adminKeys, 'empty = the app offers Admin setup')}
 ${line('firebase', B.firebase, 'null = data stays on each phone')}
 ${line('reportKey', B.reportKey, 'Web3Forms key; empty = reports are copied instead')}
 ${line('brandVersion', B.brandVersion, 'change when names or pictures change, so phones update')}
+
+  // Starter menu (RSW-020): sections, dishes and prices, added once to Recipes
+  // and the Point of sale on the Admin phone. Change menuVersion after editing
+  // so phones pick it up. [name, price]; an empty price hides it from Orders.
+${line('menuVersion', B.menuVersion)}
+  menu: [${B.menu.map((m) => `\n    { section: ${js(m.section)}, items: [${m.items.map((i) => `\n      ${js(i)},`).join('')}\n    ] },`).join('')}${B.menu.length ? '\n  ' : ''}],${B.drinks ? `
+  // Drink sections go to the bar ticket; alcohol asks for a 21+ ID check.
+${line('drinks', B.drinks)}` : ''}${B.posChoices ? `
+  // Choices asked for when a dish is added (wings sauce, burger temperature, salad dressing).
+${line('posChoices', B.posChoices)}` : ''}${B.dishExample ? `
+${line('dishExample', B.dishExample, 'example in the Recipes Name box')}` : ''}
+
+  // Starter stock (RSW-020): food and bar groups. Cleaning, paper, smallwares
+  // and linens come from the shared app for every restaurant. [name, unit].
+${line('stockStatus', B.stockStatus)}
+  starterStock: [${B.starterStock.map((g) => `\n    { group: ${js(g.group)}, items: [${g.items.map((i) => js(i)).join(', ')}] },`).join('')}${B.starterStock.length ? '\n  ' : ''}],
 };
 `;
 }

@@ -79,6 +79,8 @@ export async function loungeView() {
   const allSwaps = swaps ? (await data.list('swap')).filter((s) => s.status === 'asked' || (me && s.from === me.id)).sort((a, b) => b.at - a.at) : [];
   const firstSwap = (canChange('schedule') ? allSwaps.find((s) => s.status === 'asked') : null) || allSwaps.find((s) => me && s.from === me.id && s.status !== 'withdrawn') || allSwaps[0];
   const onClock = canTime() ? all.filter((p) => !p.out) : [];
+  const { timeOffBadge, askTimeOff } = await import('./timeoff.js'); // RRA-139
+  const toffN = canSee('schedule') ? await timeOffBadge() : 0;
   // RRA-105: events coming up, at the top.
   const { dueEvents, daysUntil, whenText } = await import('./events.js');
   const evs = await dueEvents();
@@ -97,6 +99,7 @@ export async function loungeView() {
       ${me ? `<div class="myweek">${DAYS.map((dn, i) => `<div class="${i === todayIdx ? 'today' : ''}"><span>${dn}</span>${myShifts[i] ? pill(myShifts[i], roleOf(me)) : '<em>Off</em>'}</div>`).join('')}</div>`
       : '<p class="muted small">Your shifts show here once you are on the staff list.</p>'}
       ${me && !week.published && !canChange('schedule') ? '<p class="muted small">This week isn\'t published yet.</p>' : ''}
+      ${me ? `<button class="row nav" id="l-off" type="button"><span class="grow">Ask for time off</span>${toffN ? chip(`${toffN} ${canChange('schedule') ? 'waiting' : 'update' + (toffN > 1 ? 's' : '')}`, 'orange') : ''}</button>` : ''}
       ${swaps ? `<a class="row nav" href="#/schedule${firstSwap ? '/' + firstSwap.id : ''}"><span class="grow">Swap requests</span>${chip(`${swaps} ${canChange('schedule') ? 'waiting' : 'update' + (swaps > 1 ? 's' : '')}`, 'orange')}</a>` : ''}</div>` : ''}
 
     ${canSee('prep') ? `<a class="card l-card l-link" href="#/prep/lounge"><div class="l-head"><b>Today's tasks</b><span class="chev">›</span></div>
@@ -112,6 +115,8 @@ export async function loungeView() {
       <span class="muted small">${onClock.length ? `On the clock now: ${onClock.map((p) => esc(p.name)).join(', ')}` : 'Nobody is on the clock right now.'}</span></div>` : ''}
   </div>`;
   $('#clock')?.addEventListener('click', async () => { await clock(me, all); loungeView(); });
+  // RRA-139: waiting requests or an answer go to Schedule; otherwise ask.
+  $('#l-off')?.addEventListener('click', async () => { if (toffN) location.hash = '#/schedule'; else if (await askTimeOff()) loungeView(); });
   if (open) { clearInterval(loungeView.tick); loungeView.tick = setInterval(() => { const el = $('#clock-run'); if (el) el.textContent = dur(Date.now() - open.in); else clearInterval(loungeView.tick); }, 30000); }
   $('#l-send')?.addEventListener('click', async () => {
     const text = $('#l-post').value.trim();

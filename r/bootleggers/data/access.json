@@ -1,0 +1,4 @@
+{
+  "_how": "Invite ids listed under revoked lose access the next time that phone opens the app (RRA-019). The Manager's Team screen shows each invite id.",
+  "revoked": []
+}

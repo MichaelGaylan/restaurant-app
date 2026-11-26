@@ -94,7 +94,7 @@ function kindName(k) {
 
 // ----- Manager side -----
 
-export async function createInvite(profile, name, role) {
+export async function createInvite(profile, name, role, pos = '') {
   if (!['staff', 'chef', ...(can(profile, 'invite.manager') ? ['manager'] : [])].includes(role)) throw new Error('You can\'t invite that role.');
   const pub = await myPublicKey();
   const iid = randomId(9);
@@ -103,9 +103,10 @@ export async function createInvite(profile, name, role) {
   // the shared inbox for this phone only (RRA-043).
   const rk = await exportPublic((await store.ecdhKey()).publicKey);
   const payload = { iid, name, role, iat: now, exp: now + INVITE_HOURS * 3600000, by: pub, rk };
+  if (pos) payload.pos = pos; // RRA-133: their job title, picked by the manager
   if (profile.activation) payload.chain = profile.activation;
   const code = await signToken('inv', payload);
-  await store.put(`invite:${iid}`, { iid, name, role, iat: now, exp: payload.exp, status: 'sent' });
+  await store.put(`invite:${iid}`, { iid, name, role, pos, iat: now, exp: payload.exp, status: 'sent' });
   return code;
 }
 
@@ -122,13 +123,15 @@ export async function readRequest(code) {
   return { invite: inv, dev: p.dev, ek: p.ek, deviceCode: await deviceCode(p.dev) };
 }
 
-export async function approve(profile, request, role) {
+export async function approve(profile, request, role, pos = '') {
   const { invite, dev } = request;
   if (request.restore) {
     if (!ROLES[role] || role === 'owner') throw new Error('Choose a role.');
     if (role === 'manager' && !can(profile, 'invite.manager')) throw new Error('Only the Admin can approve a manager.');
   }
   const payload = { iid: invite.iid, name: invite.name, role: request.restore ? role : invite.role, dev, iat: Date.now(), by: await myPublicKey() };
+  const job = pos || (request.restore ? '' : invite.pos);
+  if (job) payload.pos = job; // RRA-133
   if (profile.activation) payload.chain = profile.activation;
   // Hand over the team key for shared data, sealed so only the new phone can open it.
   const tk = await teamKeyBytes();
@@ -137,7 +140,7 @@ export async function approve(profile, request, role) {
   const pk = await store.get('paykey');
   if (pk && request.ek && payload.role === 'manager') payload.pk = await sealTo(request.ek, new TextEncoder().encode(JSON.stringify(pk)));
   const code = await signToken('act', payload);
-  await store.put(`invite:${invite.iid}`, { ...invite, role: payload.role, status: 'approved', approved: Date.now(), deviceCode: request.deviceCode });
+  await store.put(`invite:${invite.iid}`, { ...invite, role: payload.role, pos: job || invite.pos, status: 'approved', approved: Date.now(), deviceCode: request.deviceCode });
   return code;
 }
 
@@ -150,8 +153,29 @@ export async function sealRequest(pending) {
 }
 
 export async function openRequest(box) {
+  // RRA-134: a "let me back in" request is sealed to every manager and Admin phone.
+  if (box && box.k) {
+    const mine = box.k[await myEcdhPublic()];
+    if (!mine) throw new Error('Not for this phone');
+    box = mine;
+  }
   const bytes = await openFrom((await store.ecdhKey()).privateKey, box);
   return new TextDecoder().decode(bytes);
+}
+
+// RRA-134: seal a "let me back in" request to each manager and Admin phone.
+export async function sealToAll(pending, keys) {
+  const k = {};
+  for (const ek of keys) { try { k[ek] = await sealTo(ek, new TextEncoder().encode(pending.request)); } catch { /* old key */ } }
+  return Object.keys(k).length ? { k } : null;
+}
+// The approval goes back sealed to the asking phone only.
+export async function sealReply(request, code) {
+  if (!request.ek) return null;
+  return sealTo(request.ek, new TextEncoder().encode(code));
+}
+export async function openReply(box) {
+  return new TextDecoder().decode(await openFrom((await store.ecdhKey()).privateKey, box));
 }
 
 // ----- Staff restore (RRA-036) -----
@@ -287,6 +311,7 @@ export async function activate(code) {
     try { await store.put('paykey', JSON.parse(new TextDecoder().decode(await openFrom((await store.ecdhKey()).privateKey, p.pk)))); } catch { /* no pay key: time sheets show a note */ }
   }
   const profile = { name: p.name, role: p.role, iid: p.iid, activation: parse(code).raw, since: Date.now() };
+  if (p.pos) profile.pos = p.pos; // RRA-133: job title from the invite or approval
   await store.put('profile', profile);
   await store.del('pending');
   touch();

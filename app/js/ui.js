@@ -147,7 +147,7 @@ export function setTitle(text, actionHtml = '') {
 // the menu returns. Phones have no left menu, so nothing changes there.
 export const FULL_SCREENS = ['pos', 'seating', 'poscheck', 'pospay', 'tickets', 'schedule', 'timesheets', 'payrun', 'stock', 'recipe'];
 
-export function setChrome({ locked = false, tab = null, back = false }) {
+export function setChrome({ locked = false, tab = null, back = false, keep = false }) {
   document.body.classList.toggle('locked', locked);
   $('#tabs').hidden = locked;
   $('#side').hidden = locked;
@@ -160,7 +160,7 @@ export function setChrome({ locked = false, tab = null, back = false }) {
   $('#btn-bell').hidden = locked;
   $('#btn-back').hidden = !back;
   $$('#tabs a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
-  window.scrollTo(0, 0);
+  if (!keep) window.scrollTo(0, 0); // keep: the same screen redrawn in place (RRA-140)
 }
 
 export const fmtDate = (t) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
