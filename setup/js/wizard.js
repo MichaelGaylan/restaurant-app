@@ -133,7 +133,7 @@ function detailsStep(el) {
       <label class="field"><span>Restaurant name</span><input type="text" id="f-restaurant" value="${esc(cur.restaurant)}" placeholder="e.g. Harbor Street Grill" autocomplete="off"></label>
       <label class="field"><span>Short name (under the home-screen icon, 12 letters at most)</span><input type="text" id="f-short" value="${esc(cur.shortName)}" placeholder="e.g. Harbor" autocomplete="off"><small id="short-n" class="small muted"></small></label>
       <label class="field"><span>App name (page title and About)</span><input type="text" id="f-app" value="${esc(cur.appName)}" placeholder="${esc((cur.shortName.trim() || 'Harbor') + ' Kitchen')}" autocomplete="off"></label>
-      <label class="field"><span>Location</span><input type="text" id="f-location" value="${esc(cur.location)}" placeholder="e.g. Augusta, GA" autocomplete="off"></label>
+      <label class="field"><span>Location</span><input type="text" id="f-location" value="${esc(cur.location)}" placeholder="e.g. Savannah, GA" autocomplete="off"></label>
       <label class="field"><span>© credit line (shown in About, leave empty to hide)</span><input type="text" id="f-credit" value="${esc(cur.credit)}" placeholder="e.g. © 2026 Your Brand" autocomplete="off"></label>
     </div>
     <div class="section-label">Restaurant ID</div>

@@ -20,7 +20,7 @@ const WHATS_NEW_RAW = [
   {
     version: '0.15.0', build: '2026.11.26-1', date: '2026-11-26',
     lines: [
-      'Behind the scenes: {app} now runs on one shared app for every restaurant, so each fix reaches all of them at once. Your data stays your own.',
+      'Caught up with the latest features: job views, alert badges, time-off requests, bar drinks with a 21+ ID check, happy hour and order screen fixes.',
       'Each restaurant can start with its own menu, stock list and vendors.',
       'About shows who makes the app.',
     ],
